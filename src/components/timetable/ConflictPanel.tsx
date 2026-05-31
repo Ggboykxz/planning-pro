@@ -14,7 +14,7 @@ export function ConflictPanel({ teacherConflicts, roomConflicts }: ConflictPanel
     return (
       <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
         <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-2">Conflits</p>
-        <p className="text-xs text-[#9A9898]">Aucun conflit detecte</p>
+        <p className="text-xs text-[#9A9898]">Aucun conflit détecté ✓</p>
       </div>
     );
   }
@@ -22,7 +22,7 @@ export function ConflictPanel({ teacherConflicts, roomConflicts }: ConflictPanel
   return (
     <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
       <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-3">
-        Conflits detectes ({totalConflicts})
+        Conflits détectés ({totalConflicts})
       </p>
       <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-thin">
         {teacherConflicts.map((c, i) => (

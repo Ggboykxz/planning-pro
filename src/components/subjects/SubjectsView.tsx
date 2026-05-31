@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,6 +48,8 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -61,6 +63,13 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
   useEffect(() => {
     loadSubjects();
   }, [institutionId]);
+
+  useEffect(() => {
+    if (dialogOpen) {
+      setTimeout(() => nameRef.current?.focus(), 100);
+      setValidationErrors({});
+    }
+  }, [dialogOpen]);
 
   const loadSubjects = async () => {
     try {
@@ -76,6 +85,7 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
   const openCreate = () => {
     setEditingSubject(null);
     setForm({ name: "", code: "", hoursPerWeek: 3, type: "cours", semester: "S1", coefficient: 1 });
+    setValidationErrors({});
     setDialogOpen(true);
   };
 
@@ -89,12 +99,17 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
       semester: subject.semester || "S1",
       coefficient: subject.coefficient || 1,
     });
+    setValidationErrors({});
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
-    if (!form.name) {
-      toast.error("Le nom de la matiere est requis");
+    const errors: Record<string, boolean> = {};
+    if (!form.name) errors.name = true;
+    setValidationErrors(errors);
+
+    if (Object.keys(errors).length > 0) {
+      toast.error("Le nom de la matière est requis");
       return;
     }
     setSaving(true);
@@ -114,7 +129,7 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        toast.success(editingSubject ? "Matiere mise a jour" : "Matiere creee");
+        toast.success(editingSubject ? "Matière mise à jour ✓" : "Matière créée ✓");
         setDialogOpen(false);
         loadSubjects();
       } else {
@@ -128,11 +143,11 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Supprimer cette matiere ?")) return;
+    if (!confirm("Supprimer cette matière ?")) return;
     try {
       const res = await fetch(`/api/subjects?id=${id}`, { method: "DELETE" });
       if (res.ok) {
-        toast.success("Matiere supprimee");
+        toast.success("Matière supprimée ✓");
         loadSubjects();
       }
     } catch {
@@ -141,12 +156,12 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
   };
 
   const handleBulkDelete = async () => {
-    if (!confirm(`Supprimer ${selectedIds.size} matiere(s) ?`)) return;
+    if (!confirm(`Supprimer ${selectedIds.size} matière(s) ?`)) return;
     try {
       for (const id of selectedIds) {
         await fetch(`/api/subjects?id=${id}`, { method: "DELETE" });
       }
-      toast.success(`${selectedIds.size} matiere(s) supprimee(s)`);
+      toast.success(`${selectedIds.size} matière(s) supprimée(s) ✓`);
       setSelectedIds(new Set());
       loadSubjects();
     } catch {
@@ -174,10 +189,10 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
   if (loading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Matieres</h1>
-        <div className="animate-pulse space-y-2">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-10 bg-[#F8F7F7] dark:bg-[#1A1A1A]" />
+        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Matières</h1>
+        <div className="space-y-2">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-12 skeleton-shimmer" />
           ))}
         </div>
       </div>
@@ -188,22 +203,25 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Matieres</h1>
-          <p className="text-xs text-[#9A9898] mt-1">Gez les matieres et unites d&apos;enseignement</p>
+          <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Matières</h1>
+          <p className="text-xs text-[#9A9898] mt-1">
+            Gérez les matières et unités d&apos;enseignement
+            {subjects.length > 0 && <span className="ml-1">({subjects.length})</span>}
+          </p>
         </div>
         <Button
           onClick={openCreate}
           className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
         >
           <Plus className="h-3 w-3 mr-1" />
-          Ajouter une matiere
+          Ajouter une matière
         </Button>
       </div>
 
       {/* Search & Bulk actions */}
       <div className="flex items-center gap-3">
         <div className="w-64">
-          <SearchInput value={search} onChange={setSearch} placeholder="Rechercher une matiere..." />
+          <SearchInput value={search} onChange={setSearch} placeholder="Rechercher une matière..." />
         </div>
         {selectedIds.size > 0 && (
           <Button variant="ghost" onClick={handleBulkDelete} className="text-xs text-[#DC2626] hover:text-[#DC2626]">
@@ -215,8 +233,8 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
 
       {filteredSubjects.length === 0 ? (
         <EmptyState
-          title={search ? "Aucun resultat" : "Aucune matiere"}
-          description={search ? "Essayez un autre terme de recherche" : "Ajoutez votre premiere matiere"}
+          title={search ? "Aucun résultat" : "Aucune matière"}
+          description={search ? "Essayez un autre terme de recherche" : "Ajoutez votre première matière"}
           action={
             !search ? (
               <Button onClick={openCreate} variant="ghost" className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A]">
@@ -290,12 +308,14 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
                       <button
                         onClick={() => openEdit(subject)}
                         className="p-1.5 text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                        title="Modifier"
                       >
                         <Pencil className="h-3 w-3" />
                       </button>
                       <button
                         onClick={() => handleDelete(subject.id)}
                         className="p-1.5 text-[#646262] hover:text-[#DC2626] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                        title="Supprimer"
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -313,19 +333,28 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-sm font-bold">
-              {editingSubject ? "Modifier la matiere" : "Nouvelle matiere"}
+              {editingSubject ? "Modifier la matière" : "Nouvelle matière"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-xs font-bold">Nom *</Label>
+                <Label className="text-xs font-bold">
+                  Nom <span className="text-[#DC2626]">*</span>
+                </Label>
                 <Input
+                  ref={nameRef}
                   value={form.name}
-                  onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((prev) => ({ ...prev, name: e.target.value }));
+                    if (e.target.value) setValidationErrors((prev) => ({ ...prev, name: false }));
+                  }}
                   placeholder="Ex: Algorithmique"
-                  className="mt-1"
+                  className={`mt-1 ${validationErrors.name ? "border-[#DC2626] focus:border-[#DC2626]" : ""}`}
                 />
+                {validationErrors.name && (
+                  <p className="text-[10px] text-[#DC2626] mt-1">Requis</p>
+                )}
               </div>
               <div>
                 <Label className="text-xs font-bold">Code</Label>
@@ -388,7 +417,7 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
               disabled={saving}
               className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
             >
-              {saving ? "Enregistrement..." : editingSubject ? "Mettre a jour" : "Creer"}
+              {saving ? "Enregistrement..." : editingSubject ? "Mettre à jour" : "Créer"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -67,3 +67,34 @@ Stage Summary:
 - Quick Actions dashboard
 - Terminal-style onboarding recap
 - All existing features preserved and improved
+
+---
+Task ID: 3
+Agent: Super Z (Main)
+Task: Fix critical bug + comprehensive UX improvements
+
+Work Log:
+- Fixed critical timezone bug: OnboardingWizard wasn't sending timezone field, causing 500 error on institution creation
+- Added timezone to formData initial state and handleCountrySelect
+- Fixed 30+ missing French accented characters across all components (établissement, système, académique, créneau, etc.)
+- Added smooth CSS transitions for colors/opacity/focus states
+- Added shimmer loading animation replacing animate-pulse
+- Improved empty states with ASCII art icons and fade-in
+- Added page transitions with animate-in fade-in on section switch
+- Improved TopNav with institution name label, accessibility labels, mobile slide animation
+- Enhanced QuickActions with Lucide icons and hover translate-y animation
+- Improved SearchInput with "/" keyboard shortcut and kbd hint
+- Added form validation with red borders, step validation, progress bar in OnboardingWizard
+- Improved timetable grid with zoom controls, tooltips, break row styling, subject hours summary
+- Better dialog UX with auto-focus, validation, error messages
+- Added MobileBottomNav component for mobile navigation
+- Added context info with item counts in page subtitles
+- Settings page: collapsible sections, unsaved changes indicator, save button state
+- Lint check: zero errors
+- Full creation flow tested and working in browser
+
+Stage Summary:
+- Critical timezone bug fixed - institution creation now works
+- 30+ French accent corrections applied
+- 15 UX improvements implemented (transitions, validation, loading, mobile, etc.)
+- Application fully functional with improved user experience

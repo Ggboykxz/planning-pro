@@ -11,6 +11,7 @@ import { RoomsView } from "@/components/rooms/RoomsView";
 import { SubjectsView } from "@/components/subjects/SubjectsView";
 import { ClassesView } from "@/components/classes/ClassesView";
 import { SettingsView } from "@/components/settings/SettingsView";
+import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 
 interface InstitutionData {
   id: string;
@@ -101,7 +102,7 @@ export default function HomePage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0A0A0A]">
         <div className="text-center">
-          <p className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] animate-pulse">
+          <p className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] skeleton-shimmer inline-block px-2">
             PlanningPro_
           </p>
           <p className="text-xs text-[#9A9898] mt-1">Chargement...</p>
@@ -145,11 +146,12 @@ export default function HomePage() {
   return (
     <div className="min-h-screen flex flex-col bg-white dark:bg-[#0A0A0A]">
       <TopNav institutionName={institution.name} />
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-[1080px] mx-auto px-4 sm:px-6 py-6">
+      <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
+        <div key={currentSection} className="max-w-[1080px] mx-auto px-4 sm:px-6 py-6 animate-in fade-in duration-200">
           {renderSection()}
         </div>
       </main>
+      <MobileBottomNav />
     </div>
   );
 }

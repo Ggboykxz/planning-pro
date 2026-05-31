@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,6 +54,8 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
+  const firstNameRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -68,6 +70,14 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
   useEffect(() => {
     loadData();
   }, [institutionId]);
+
+  // Focus first input when dialog opens
+  useEffect(() => {
+    if (dialogOpen) {
+      setTimeout(() => firstNameRef.current?.focus(), 100);
+      setValidationErrors({});
+    }
+  }, [dialogOpen]);
 
   const loadData = async () => {
     try {
@@ -95,6 +105,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
       maxHoursPerWeek: 20,
       subjectIds: [],
     });
+    setValidationErrors({});
     setDialogOpen(true);
   };
 
@@ -109,12 +120,18 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
       maxHoursPerWeek: teacher.maxHoursPerWeek || 20,
       subjectIds: teacher.subjectAssignments.map((sa) => sa.subject.id),
     });
+    setValidationErrors({});
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
-    if (!form.firstName || !form.lastName) {
-      toast.error("Le prenom et le nom sont requis");
+    const errors: Record<string, boolean> = {};
+    if (!form.firstName) errors.firstName = true;
+    if (!form.lastName) errors.lastName = true;
+    setValidationErrors(errors);
+
+    if (Object.keys(errors).length > 0) {
+      toast.error("Le prénom et le nom sont requis");
       return;
     }
     setSaving(true);
@@ -132,7 +149,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        toast.success(editingTeacher ? "Enseignant mis a jour" : "Enseignant cree");
+        toast.success(editingTeacher ? "Enseignant mis à jour ✓" : "Enseignant créé ✓");
         setDialogOpen(false);
         loadData();
       } else {
@@ -150,7 +167,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
     try {
       const res = await fetch(`/api/teachers?id=${id}`, { method: "DELETE" });
       if (res.ok) {
-        toast.success("Enseignant supprime");
+        toast.success("Enseignant supprimé ✓");
         loadData();
       }
     } catch {
@@ -164,7 +181,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
       for (const id of selectedIds) {
         await fetch(`/api/teachers?id=${id}`, { method: "DELETE" });
       }
-      toast.success(`${selectedIds.size} enseignant(s) supprime(s)`);
+      toast.success(`${selectedIds.size} enseignant(s) supprimé(s) ✓`);
       setSelectedIds(new Set());
       loadData();
     } catch {
@@ -198,9 +215,9 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Enseignants</h1>
-        <div className="animate-pulse space-y-2">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-10 bg-[#F8F7F7] dark:bg-[#1A1A1A]" />
+        <div className="space-y-2">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-12 skeleton-shimmer" />
           ))}
         </div>
       </div>
@@ -212,7 +229,10 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Enseignants</h1>
-          <p className="text-xs text-[#9A9898] mt-1">Gez les enseignants de votre etablissement</p>
+          <p className="text-xs text-[#9A9898] mt-1">
+            Gérez les enseignants de votre établissement
+            {teachers.length > 0 && <span className="ml-1">({teachers.length})</span>}
+          </p>
         </div>
         <Button
           onClick={openCreate}
@@ -242,7 +262,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
 
       {filteredTeachers.length === 0 ? (
         <EmptyState
-          title={search ? "Aucun resultat" : "Aucun enseignant"}
+          title={search ? "Aucun résultat" : "Aucun enseignant"}
           description={search ? "Essayez un autre terme de recherche" : "Ajoutez votre premier enseignant pour commencer"}
           action={
             !search ? (
@@ -258,7 +278,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
           }
         />
       ) : (
-        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] overflow-x-auto">
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] overflow-x-auto relative">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-[#F8F7F7] dark:bg-[#1A1A1A]">
@@ -278,8 +298,8 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
                 </th>
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Nom</th>
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Contact</th>
-                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Specialisation</th>
-                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Matieres</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Spécialisation</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Matières</th>
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Charge</th>
                 <th className="p-2 text-xs font-bold text-right text-[#201D1D] dark:text-[#FDFCFC]">Actions</th>
               </tr>
@@ -328,7 +348,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
                         </span>
                         <div className="w-12 h-1 bg-[#F8F7F7] dark:bg-[#1A1A1A]">
                           <div
-                            className={`h-full ${
+                            className={`h-full transition-all duration-500 ${
                               loadPct > 80 ? "bg-[#DC2626]" : loadPct > 50 ? "bg-[#D97706]" : "bg-[#201D1D] dark:bg-[#FDFCFC]"
                             }`}
                             style={{ width: `${Math.min(loadPct, 100)}%` }}
@@ -341,12 +361,14 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
                         <button
                           onClick={() => openEdit(teacher)}
                           className="p-1.5 text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                          title="Modifier"
                         >
                           <Pencil className="h-3 w-3" />
                         </button>
                         <button
                           onClick={() => handleDelete(teacher.id)}
                           className="p-1.5 text-[#646262] hover:text-[#DC2626] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                          title="Supprimer"
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
@@ -371,22 +393,39 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-xs font-bold">Prenom *</Label>
+                <Label className="text-xs font-bold">
+                  Prénom <span className="text-[#DC2626]">*</span>
+                </Label>
                 <Input
+                  ref={firstNameRef}
                   value={form.firstName}
-                  onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))}
-                  placeholder="Prenom"
-                  className="mt-1"
+                  onChange={(e) => {
+                    setForm((prev) => ({ ...prev, firstName: e.target.value }));
+                    if (e.target.value) setValidationErrors((prev) => ({ ...prev, firstName: false }));
+                  }}
+                  placeholder="Prénom"
+                  className={`mt-1 ${validationErrors.firstName ? "border-[#DC2626] focus:border-[#DC2626]" : ""}`}
                 />
+                {validationErrors.firstName && (
+                  <p className="text-[10px] text-[#DC2626] mt-1">Requis</p>
+                )}
               </div>
               <div>
-                <Label className="text-xs font-bold">Nom *</Label>
+                <Label className="text-xs font-bold">
+                  Nom <span className="text-[#DC2626]">*</span>
+                </Label>
                 <Input
                   value={form.lastName}
-                  onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((prev) => ({ ...prev, lastName: e.target.value }));
+                    if (e.target.value) setValidationErrors((prev) => ({ ...prev, lastName: false }));
+                  }}
                   placeholder="Nom"
-                  className="mt-1"
+                  className={`mt-1 ${validationErrors.lastName ? "border-[#DC2626] focus:border-[#DC2626]" : ""}`}
                 />
+                {validationErrors.lastName && (
+                  <p className="text-[10px] text-[#DC2626] mt-1">Requis</p>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -401,7 +440,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
                 />
               </div>
               <div>
-                <Label className="text-xs font-bold">Telephone</Label>
+                <Label className="text-xs font-bold">Téléphone</Label>
                 <Input
                   value={form.phone}
                   onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
@@ -412,11 +451,11 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-xs font-bold">Specialisation</Label>
+                <Label className="text-xs font-bold">Spécialisation</Label>
                 <Input
                   value={form.specialization}
                   onChange={(e) => setForm((prev) => ({ ...prev, specialization: e.target.value }))}
-                  placeholder="Informatique, Mathematiques..."
+                  placeholder="Informatique, Mathématiques..."
                   className="mt-1"
                 />
               </div>
@@ -433,7 +472,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
             <div>
               <Label className="text-xs font-bold flex items-center gap-1 mb-2">
                 <BookOpen className="h-3 w-3" />
-                Matieres enseignees
+                Matières enseignées
               </Label>
               <div className="flex flex-wrap gap-1">
                 {subjects.map((subject) => (
@@ -441,7 +480,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
                     key={subject.id}
                     type="button"
                     onClick={() => toggleSubject(subject.id)}
-                    className={`text-[10px] px-2 py-1 border transition-colors ${
+                    className={`text-[10px] px-2 py-1 border transition-all duration-150 ${
                       form.subjectIds.includes(subject.id)
                         ? "border-[#201D1D] dark:border-[#FDFCFC] bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] font-bold"
                         : "border-[#E5E5E5] dark:border-[#2A2A2A] text-[#646262] dark:text-[#9A9898] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]"
@@ -451,7 +490,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
                   </button>
                 ))}
                 {subjects.length === 0 && (
-                  <p className="text-xs text-[#9A9898]">Creez d&apos;abord des matieres</p>
+                  <p className="text-xs text-[#9A9898]">Créez d&apos;abord des matières</p>
                 )}
               </div>
             </div>
@@ -465,7 +504,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
               disabled={saving}
               className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
             >
-              {saving ? "Enregistrement..." : editingTeacher ? "Mettre a jour" : "Creer"}
+              {saving ? "Enregistrement..." : editingTeacher ? "Mettre à jour" : "Créer"}
             </Button>
           </DialogFooter>
         </DialogContent>

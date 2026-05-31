@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,6 +46,8 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -58,6 +60,13 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
   useEffect(() => {
     loadRooms();
   }, [institutionId]);
+
+  useEffect(() => {
+    if (dialogOpen) {
+      setTimeout(() => nameRef.current?.focus(), 100);
+      setValidationErrors({});
+    }
+  }, [dialogOpen]);
 
   const loadRooms = async () => {
     try {
@@ -73,6 +82,7 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
   const openCreate = () => {
     setEditingRoom(null);
     setForm({ name: "", capacity: 30, type: "salle_normale", building: "", floor: "" });
+    setValidationErrors({});
     setDialogOpen(true);
   };
 
@@ -85,11 +95,16 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
       building: room.building || "",
       floor: room.floor || "",
     });
+    setValidationErrors({});
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
-    if (!form.name) {
+    const errors: Record<string, boolean> = {};
+    if (!form.name) errors.name = true;
+    setValidationErrors(errors);
+
+    if (Object.keys(errors).length > 0) {
       toast.error("Le nom de la salle est requis");
       return;
     }
@@ -109,7 +124,7 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        toast.success(editingRoom ? "Salle mise a jour" : "Salle creee");
+        toast.success(editingRoom ? "Salle mise à jour ✓" : "Salle créée ✓");
         setDialogOpen(false);
         loadRooms();
       } else {
@@ -127,7 +142,7 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
     try {
       const res = await fetch(`/api/rooms?id=${id}`, { method: "DELETE" });
       if (res.ok) {
-        toast.success("Salle supprimee");
+        toast.success("Salle supprimée ✓");
         loadRooms();
       }
     } catch {
@@ -141,7 +156,7 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
       for (const id of selectedIds) {
         await fetch(`/api/rooms?id=${id}`, { method: "DELETE" });
       }
-      toast.success(`${selectedIds.size} salle(s) supprimee(s)`);
+      toast.success(`${selectedIds.size} salle(s) supprimée(s) ✓`);
       setSelectedIds(new Set());
       loadRooms();
     } catch {
@@ -170,9 +185,9 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Salles</h1>
-        <div className="animate-pulse space-y-2">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-10 bg-[#F8F7F7] dark:bg-[#1A1A1A]" />
+        <div className="space-y-2">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-12 skeleton-shimmer" />
           ))}
         </div>
       </div>
@@ -184,7 +199,10 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Salles</h1>
-          <p className="text-xs text-[#9A9898] mt-1">Gez les salles et amphitheatres</p>
+          <p className="text-xs text-[#9A9898] mt-1">
+            Gérez les salles et amphithéâtres
+            {rooms.length > 0 && <span className="ml-1">({rooms.length})</span>}
+          </p>
         </div>
         <Button
           onClick={openCreate}
@@ -210,8 +228,8 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
 
       {filteredRooms.length === 0 ? (
         <EmptyState
-          title={search ? "Aucun resultat" : "Aucune salle"}
-          description={search ? "Essayez un autre terme de recherche" : "Ajoutez votre premiere salle"}
+          title={search ? "Aucun résultat" : "Aucune salle"}
+          description={search ? "Essayez un autre terme de recherche" : "Ajoutez votre première salle"}
           action={
             !search ? (
               <Button onClick={openCreate} variant="ghost" className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A]">
@@ -241,9 +259,9 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
                 </th>
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Nom</th>
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Type</th>
-                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Capacite</th>
-                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Batiment</th>
-                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Etage</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Capacité</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Bâtiment</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Étage</th>
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Utilisation</th>
                 <th className="p-2 text-xs font-bold text-right text-[#201D1D] dark:text-[#FDFCFC]">Actions</th>
               </tr>
@@ -270,19 +288,21 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
                     <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">{room.building || "—"}</td>
                     <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">{room.floor || "—"}</td>
                     <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">
-                      {usedSlots} creneau{usedSlots !== 1 ? "x" : ""}
+                      {usedSlots} créneau{usedSlots !== 1 ? "x" : ""}
                     </td>
                     <td className="p-2 text-right">
                       <div className="flex justify-end gap-1">
                         <button
                           onClick={() => openEdit(room)}
                           className="p-1.5 text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                          title="Modifier"
                         >
                           <Pencil className="h-3 w-3" />
                         </button>
                         <button
                           onClick={() => handleDelete(room.id)}
                           className="p-1.5 text-[#646262] hover:text-[#DC2626] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                          title="Supprimer"
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
@@ -306,13 +326,22 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label className="text-xs font-bold">Nom *</Label>
+              <Label className="text-xs font-bold">
+                Nom <span className="text-[#DC2626]">*</span>
+              </Label>
               <Input
+                ref={nameRef}
                 value={form.name}
-                onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                onChange={(e) => {
+                  setForm((prev) => ({ ...prev, name: e.target.value }));
+                  if (e.target.value) setValidationErrors((prev) => ({ ...prev, name: false }));
+                }}
                 placeholder="Ex: Amphi 500, Salle B12"
-                className="mt-1"
+                className={`mt-1 ${validationErrors.name ? "border-[#DC2626] focus:border-[#DC2626]" : ""}`}
               />
+              {validationErrors.name && (
+                <p className="text-[10px] text-[#DC2626] mt-1">Requis</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -327,7 +356,7 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
                 </Select>
               </div>
               <div>
-                <Label className="text-xs font-bold">Capacite</Label>
+                <Label className="text-xs font-bold">Capacité</Label>
                 <Input
                   type="number"
                   value={form.capacity}
@@ -338,16 +367,16 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-xs font-bold">Batiment</Label>
+                <Label className="text-xs font-bold">Bâtiment</Label>
                 <Input
                   value={form.building}
                   onChange={(e) => setForm((prev) => ({ ...prev, building: e.target.value }))}
-                  placeholder="Ex: Batiment A"
+                  placeholder="Ex: Bâtiment A"
                   className="mt-1"
                 />
               </div>
               <div>
-                <Label className="text-xs font-bold">Etage</Label>
+                <Label className="text-xs font-bold">Étage</Label>
                 <Input
                   value={form.floor}
                   onChange={(e) => setForm((prev) => ({ ...prev, floor: e.target.value }))}
@@ -364,7 +393,7 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
               disabled={saving}
               className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
             >
-              {saving ? "Enregistrement..." : editingRoom ? "Mettre a jour" : "Creer"}
+              {saving ? "Enregistrement..." : editingRoom ? "Mettre à jour" : "Créer"}
             </Button>
           </DialogFooter>
         </DialogContent>

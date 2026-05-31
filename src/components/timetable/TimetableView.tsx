@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Sparkles, Printer, AlertTriangle } from "lucide-react";
+import { Sparkles, Printer, AlertTriangle, ZoomIn, ZoomOut, Clock } from "lucide-react";
 import { dayNames } from "@/lib/countries";
 import { useAppStore, type TimetableViewMode } from "@/lib/store";
 import { ContextBar } from "@/components/layout/ContextBar";
@@ -80,6 +80,8 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [conflicts, setConflicts] = useState<ConflictData | null>(null);
+  const [zoom, setZoom] = useState(100);
+  const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
 
   const {
     timetableViewMode,
@@ -199,14 +201,14 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success("Emploi du temps genere avec succes !");
+        toast.success("Emploi du temps généré avec succès ✓");
         setTimetable(data);
         loadConflicts();
       } else {
-        toast.error(data.error || "Erreur lors de la generation");
+        toast.error(data.error || "Erreur lors de la génération");
       }
     } catch {
-      toast.error("Erreur lors de la generation");
+      toast.error("Erreur lors de la génération");
     } finally {
       setGenerating(false);
     }
@@ -245,6 +247,33 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     }
   }
 
+  // Calculate subject hours
+  const subjectHours = new Map<string, { name: string; hours: number }>();
+  if (timetable?.slots) {
+    for (const slot of timetable.slots) {
+      if (slot.subject) {
+        const existing = subjectHours.get(slot.subject.id);
+        if (existing) {
+          existing.hours += 1;
+        } else {
+          subjectHours.set(slot.subject.id, { name: slot.subject.name, hours: 1 });
+        }
+      }
+    }
+  }
+
+  // Detect break time rows (slots that fall in typical break period)
+  const isBreakTime = (startTime: string) => {
+    const hour = parseInt(startTime.split(":")[0]);
+    return hour >= 12 && hour < 14;
+  };
+
+  // Get current time info
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const currentTimeStr = `${String(currentHour).padStart(2, "0")}:${String(currentMinute).padStart(2, "0")}`;
+
   const viewModeTabs = [
     { id: "class", label: "Par classe" },
     { id: "teacher", label: "Par enseignant" },
@@ -257,7 +286,7 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
         <div>
           <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Emploi du temps</h1>
           <p className="text-xs text-[#9A9898] mt-1">
-            Consultez et genez les emplois du temps
+            Consultez et générez les emplois du temps
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -304,14 +333,14 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
               className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
             >
               <Sparkles className="h-3 w-3 mr-1" />
-              {generating ? "Generation..." : "Generer"}
+              {generating ? "Génération..." : "Générer"}
             </Button>
           )}
           <Button
             variant="ghost"
             onClick={handlePrint}
             disabled={!timetable}
-            className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+            className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] no-print"
           >
             <Printer className="h-3 w-3 mr-1" />
             Imprimer
@@ -329,34 +358,60 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
       {/* Content */}
       {classes.length === 0 && timetableViewMode === "class" ? (
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-16 text-center">
-          <p className="text-xs text-[#9A9898]">Aucune classe configuree. Creez d&apos;abord des classes.</p>
+          <p className="text-xs text-[#9A9898]">Aucune classe configurée. Créez d&apos;abord des classes.</p>
         </div>
       ) : loading ? (
-        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-16 text-center">
-          <p className="text-xs text-[#9A9898]">Chargement...</p>
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
+          <div className="grid grid-cols-5 gap-1">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
+              <div key={i} className="h-16 skeleton-shimmer" />
+            ))}
+          </div>
         </div>
       ) : !timetable ? (
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-16 text-center">
           <AlertTriangle className="h-8 w-8 text-[#D97706] mx-auto mb-3" />
           <p className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold">Aucun emploi du temps</p>
           <p className="text-xs text-[#9A9898] mt-1">
-            Cliquez sur &quot;Generer&quot; pour creer automatiquement l&apos;emploi du temps
+            Cliquez sur &quot;Générer&quot; pour créer automatiquement l&apos;emploi du temps
           </p>
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Timetable title */}
-          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
-            {timetable.name} — {timetable.class.name}
-          </p>
+          {/* Timetable title + zoom controls */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+              {timetable.name} — {timetable.class.name}
+            </p>
+            <div className="flex items-center gap-1 no-print">
+              <button
+                onClick={() => setZoom(Math.max(70, zoom - 10))}
+                className="p-1.5 text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                title="Zoom arrière"
+              >
+                <ZoomOut className="h-3.5 w-3.5" />
+              </button>
+              <span className="text-[10px] text-[#9A9898] w-10 text-center">{zoom}%</span>
+              <button
+                onClick={() => setZoom(Math.min(150, zoom + 10))}
+                className="p-1.5 text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                title="Zoom avant"
+              >
+                <ZoomIn className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
 
           {/* Timetable Grid */}
-          <div className="overflow-x-auto border border-[#E5E5E5] dark:border-[#2A2A2A]">
-            <table className="w-full border-collapse min-w-[700px]">
+          <div className="overflow-x-auto border border-[#E5E5E5] dark:border-[#2A2A2A] relative">
+            <table className="w-full border-collapse min-w-[700px]" style={{ fontSize: `${zoom * 0.12}px` }}>
               <thead>
                 <tr className="bg-[#F8F7F7] dark:bg-[#1A1A1A]">
                   <th className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-2 text-xs font-bold text-left w-24 text-[#201D1D] dark:text-[#FDFCFC]">
-                    Horaire
+                    <div className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      Horaire
+                    </div>
                   </th>
                   {days.map((day) => (
                     <th
@@ -371,10 +426,14 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
               <tbody>
                 {allTimes.map((time) => {
                   const [start, end] = time.split("-");
+                  const isBreak = isBreakTime(start);
                   return (
-                    <tr key={time}>
-                      <td className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-2 text-[10px] text-[#9A9898] whitespace-nowrap">
-                        {start} — {end}
+                    <tr key={time} className={isBreak ? "break-row" : ""}>
+                      <td className={`border border-[#E5E5E5] dark:border-[#2A2A2A] p-2 text-[10px] text-[#9A9898] whitespace-nowrap ${isBreak ? "bg-[#F8F7F7]/50 dark:bg-[#1A1A1A]/50" : ""}`}>
+                        <div className="flex items-center gap-1">
+                          {start} — {end}
+                          {isBreak && <span className="text-[8px] font-bold text-[#D97706] ml-1">PAUSE</span>}
+                        </div>
                       </td>
                       {days.map((day) => {
                         const slot = slotsByDay[day]?.find(
@@ -382,16 +441,25 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
                         );
                         if (!slot || !slot.subject) {
                           return (
-                            <td key={day} className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-1">
+                            <td key={day} className={`border border-[#E5E5E5] dark:border-[#2A2A2A] p-1 timetable-cell ${isBreak ? "break-row" : ""}`}>
                               <div className="h-full min-h-[60px]" />
                             </td>
                           );
                         }
                         const colorIdx = subjectColorMap.get(slot.subject.id) || 0;
                         const color = subjectColorPalette[colorIdx];
+                        const isHovered = hoveredSlot === slot.id;
                         return (
-                          <td key={day} className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-1">
-                            <div className={`border-l-[3px] ${color.border} ${color.bg} p-2 min-h-[60px]`}>
+                          <td
+                            key={day}
+                            className={`border border-[#E5E5E5] dark:border-[#2A2A2A] p-1 timetable-cell ${isBreak ? "break-row" : ""}`}
+                            onMouseEnter={() => setHoveredSlot(slot.id)}
+                            onMouseLeave={() => setHoveredSlot(null)}
+                          >
+                            <div
+                              className={`border-l-[3px] ${color.border} ${color.bg} p-2 min-h-[60px] transition-all duration-150 ${isHovered ? "ring-1 ring-[#201D1D]/20 dark:ring-[#FDFCFC]/20" : ""}`}
+                              title={`${slot.subject.name}${slot.subject.type ? ` (${slot.subject.type})` : ""}\n${slot.teacher ? `${slot.teacher.firstName} ${slot.teacher.lastName}` : ""}\n${slot.room ? slot.room.name : ""}\n${start} — ${end}`}
+                            >
                               <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] truncate">
                                 {slot.subject.name}
                               </p>
@@ -423,16 +491,17 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
             </table>
           </div>
 
-          {/* Legend */}
-          {subjectColorMap.size > 0 && (
-            <div className="flex flex-wrap gap-4 pt-2">
-              {Array.from(subjectColorMap.entries()).map(([subjectId, colorIdx]) => {
-                const slot = timetable.slots.find((s) => s.subject?.id === subjectId);
+          {/* Subject Hours Summary */}
+          {subjectHours.size > 0 && (
+            <div className="flex flex-wrap gap-3 pt-1">
+              {Array.from(subjectHours.entries()).map(([subjectId, info]) => {
+                const colorIdx = subjectColorMap.get(subjectId) || 0;
                 const color = subjectColorPalette[colorIdx];
                 return (
                   <div key={subjectId} className="flex items-center gap-1.5">
                     <div className={`h-3 w-3 border-l-[3px] ${color.border} ${color.bg}`} />
-                    <span className="text-[10px] text-[#646262]">{slot?.subject?.name}</span>
+                    <span className="text-[10px] text-[#646262]">{info.name}</span>
+                    <span className="text-[10px] text-[#9A9898]">({info.hours}h)</span>
                   </div>
                 );
               })}

@@ -5,6 +5,7 @@ import { StatBlock } from "./StatBlock";
 import { QuickActions } from "./QuickActions";
 import { dayNames } from "@/lib/countries";
 import { useAppStore } from "@/lib/store";
+import { UserPlus, DoorOpen, BookOpen, Sparkles, CheckCircle2 } from "lucide-react";
 
 interface DashboardData {
   teacherCount: number;
@@ -49,10 +50,10 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
   };
 
   const quickActions = [
-    { label: "Ajouter un enseignant", onClick: () => setCurrentSection("teachers") },
-    { label: "Creer une salle", onClick: () => setCurrentSection("rooms") },
-    { label: "Nouvelle matiere", onClick: () => setCurrentSection("subjects") },
-    { label: "Generer emploi du temps", onClick: () => setCurrentSection("timetable") },
+    { label: "Ajouter un enseignant", onClick: () => setCurrentSection("teachers"), icon: <UserPlus className="h-3.5 w-3.5" /> },
+    { label: "Créer une salle", onClick: () => setCurrentSection("rooms"), icon: <DoorOpen className="h-3.5 w-3.5" /> },
+    { label: "Nouvelle matière", onClick: () => setCurrentSection("subjects"), icon: <BookOpen className="h-3.5 w-3.5" /> },
+    { label: "Générer emploi du temps", onClick: () => setCurrentSection("timetable"), icon: <Sparkles className="h-3.5 w-3.5" /> },
   ];
 
   if (loading) {
@@ -62,11 +63,32 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
           <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Tableau de bord</h1>
           <p className="text-xs text-[#9A9898] mt-1">Chargement...</p>
         </div>
+        {/* Shimmer stat blocks */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4 animate-pulse">
-              <div className="h-8 bg-[#F8F7F7] dark:bg-[#1A1A1A] w-12 mb-2" />
-              <div className="h-3 bg-[#F8F7F7] dark:bg-[#1A1A1A] w-20" />
+            <div key={i} className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
+              <div className="h-8 skeleton-shimmer w-12 mb-2" />
+              <div className="h-3 skeleton-shimmer w-20" />
+            </div>
+          ))}
+        </div>
+        {/* Shimmer card outlines */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {[1, 2].map((i) => (
+            <div key={i} className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+              <div className="h-3 skeleton-shimmer w-40 mb-4" />
+              <div className="h-4 skeleton-shimmer w-24 mb-2" />
+              <div className="h-1 skeleton-shimmer w-full" />
+            </div>
+          ))}
+        </div>
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+          <div className="h-3 skeleton-shimmer w-48 mb-4" />
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex items-center gap-3 mb-3">
+              <div className="h-3 skeleton-shimmer w-32" />
+              <div className="h-1 skeleton-shimmer flex-1" />
+              <div className="h-3 skeleton-shimmer w-16" />
             </div>
           ))}
         </div>
@@ -81,7 +103,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
       <div>
         <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Tableau de bord</h1>
         <p className="text-xs text-[#9A9898] mt-1">
-          Vue d&apos;ensemble de votre etablissement
+          Vue d&apos;ensemble de votre établissement
         </p>
       </div>
 
@@ -96,15 +118,15 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         <StatBlock
           label="Enseignants"
           value={data.teacherCount}
-          sublabel={`${data.teacherWorkload.filter((t) => t.percentage > 80).length} avec charge elevee`}
+          sublabel={`${data.teacherWorkload.filter((t) => t.percentage > 80).length} avec charge élevée`}
         />
         <StatBlock
           label="Salles"
           value={data.roomCount}
-          sublabel={`${data.roomUtilization.filter((r) => r.usedSlots > 0).length} utilisees`}
+          sublabel={`${data.roomUtilization.filter((r) => r.usedSlots > 0).length} utilisées`}
         />
         <StatBlock
-          label="Matieres"
+          label="Matières"
           value={data.subjectCount}
         />
         <StatBlock
@@ -118,7 +140,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         <StatBlock
           label="Conflits"
           value={data.conflictCount}
-          sublabel={data.conflictCount === 0 ? "Aucun conflit" : "A resoudre"}
+          sublabel={data.conflictCount === 0 ? "Aucun conflit" : "À résoudre"}
         />
       </div>
 
@@ -126,16 +148,16 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Completion Rate */}
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Taux de completion</p>
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Taux de complétion</p>
           <div className="flex items-baseline gap-2">
             <span className="text-4xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.completionRate}%</span>
             <span className="text-xs text-[#9A9898]">
-              {data.completionRate === 100 ? "complet" : "en cours"}
+              {data.completionRate === 100 ? "complété" : "en cours"}
             </span>
           </div>
           <div className="mt-3 h-1 bg-[#F8F7F7] dark:bg-[#1A1A1A] w-full">
             <div
-              className="h-full bg-[#201D1D] dark:bg-[#FDFCFC] transition-all"
+              className="h-full bg-[#201D1D] dark:bg-[#FDFCFC] transition-all duration-500"
               style={{ width: `${data.completionRate}%` }}
             />
           </div>
@@ -146,10 +168,11 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
 
         {/* Conflicts */}
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Conflits detectes</p>
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Conflits détectés</p>
           {data.conflictCount === 0 ? (
             <div className="py-8 text-center">
-              <p className="text-xs text-[#9A9898]">Aucun conflit detecte</p>
+              <CheckCircle2 className="h-8 w-8 text-[#201D1D] dark:text-[#FDFCFC] mx-auto mb-2 opacity-20" />
+              <p className="text-xs text-[#9A9898]">Aucun conflit détecté</p>
             </div>
           ) : (
             <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin">
@@ -184,7 +207,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
       <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
         <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Charge des enseignants</p>
         {data.teacherWorkload.length === 0 ? (
-          <p className="text-xs text-[#9A9898] py-4 text-center">Aucun enseignant configure</p>
+          <p className="text-xs text-[#9A9898] py-4 text-center">Aucun enseignant configuré</p>
         ) : (
           <div className="space-y-3 max-h-64 overflow-y-auto scrollbar-thin">
             {data.teacherWorkload.slice(0, 10).map((t) => (
@@ -192,7 +215,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
                 <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC] w-40 truncate">{t.name}</span>
                 <div className="flex-1 h-1 bg-[#F8F7F7] dark:bg-[#1A1A1A]">
                   <div
-                    className={`h-full ${
+                    className={`h-full transition-all duration-500 ${
                       t.percentage > 80 ? "bg-[#DC2626]" : t.percentage > 50 ? "bg-[#D97706]" : "bg-[#201D1D] dark:bg-[#FDFCFC]"
                     }`}
                     style={{ width: `${Math.min(t.percentage, 100)}%` }}
@@ -209,9 +232,9 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
 
       {/* Recent Timetables */}
       <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Emplois du temps recents</p>
+        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Emplois du temps récents</p>
         {data.recentTimetables.length === 0 ? (
-          <p className="text-xs text-[#9A9898] py-4 text-center">Aucun emploi du temps cree</p>
+          <p className="text-xs text-[#9A9898] py-4 text-center">Aucun emploi du temps créé</p>
         ) : (
           <div className="space-y-0">
             {data.recentTimetables.map((tt) => (

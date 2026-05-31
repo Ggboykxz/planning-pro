@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { countries, institutionTypes, educationSystems, gradingSystems, semesterSystems, type CountryPreset } from "@/lib/countries";
-import { ChevronLeft, ChevronRight, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, Check, AlertCircle } from "lucide-react";
 
 interface OnboardingWizardProps {
   onComplete: (data: Record<string, unknown>) => void;
@@ -27,6 +27,7 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
   const [selectedCountry, setSelectedCountry] = useState<CountryPreset | null>(null);
   const [formData, setFormData] = useState({
     country: "",
+    timezone: "Africa/Dakar",
     name: "",
     type: "universite",
     address: "",
@@ -49,6 +50,7 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
     setFormData((prev) => ({
       ...prev,
       country: country.code,
+      timezone: country.timezone,
       workingDays: country.defaultWorkingDays,
       dayStartTime: country.defaultStartTime,
       dayEndTime: country.defaultEndTime,
@@ -74,11 +76,24 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
     onComplete(formData);
   };
 
+  // Step validation
+  const getStepErrors = (stepNum: number): string[] => {
+    const errors: string[] = [];
+    if (stepNum === 1 && !formData.country) errors.push("Sélectionnez un pays");
+    if (stepNum === 2 && !formData.name) errors.push("Le nom de l'établissement est requis");
+    if (stepNum === 3 && formData.workingDays.length === 0) errors.push("Sélectionnez au moins un jour");
+    return errors;
+  };
+
+  const canProceed = (stepNum: number): boolean => {
+    return getStepErrors(stepNum).length === 0;
+  };
+
   const steps = [
     { number: 1, title: "Pays" },
-    { number: 2, title: "Etablissement" },
+    { number: 2, title: "Établissement" },
     { number: 3, title: "Horaires" },
-    { number: 4, title: "Systeme" },
+    { number: 4, title: "Système" },
     { number: 5, title: "Confirmation" },
   ];
 
@@ -86,23 +101,36 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
   const terminalPreview = `
 ┌─ Configuration ──────────────────────────┐
 │ pays:           "${formData.country || "..."}"                     │
-│ etablissement:  "${formData.name || "..."}"                     │
+│ établissement:  "${formData.name || "..."}"                     │
 │ type:           "${institutionTypes.find(t => t.value === formData.type)?.label || "..."}"     │
 │ horaires:       "${formData.dayStartTime} — ${formData.dayEndTime}"          │
 │ pause:          "${formData.breakStartTime} — ${formData.breakEndTime}"             │
 │ jours:          "${formData.workingDays.join(", ")}"   │
-│ systeme:        "${educationSystems.find(s => s.value === formData.educationSystem)?.label || "..."}"  │
+│ système:        "${educationSystems.find(s => s.value === formData.educationSystem)?.label || "..."}"  │
 │ notation:       "/${formData.gradingSystem}"                     │
 │ rythme:         "${semesterSystems.find(s => s.value === formData.semesterSystem)?.label || "..."}"     │
+│ fuseau:         "${formData.timezone}"              │
 └──────────────────────────────────────────┘`;
+
+  const progress = (step / steps.length) * 100;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0A0A0A] p-4">
       <div className="w-full max-w-[640px]">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-6">
           <p className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC]">PlanningPro_</p>
           <p className="text-xs text-[#9A9898] mt-1">Configuration initiale</p>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mb-6">
+          <div className="h-1 bg-[#F8F7F7] dark:bg-[#1A1A1A] w-full">
+            <div
+              className="h-full bg-[#201D1D] dark:bg-[#FDFCFC] transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
 
         {/* Step indicators */}
@@ -110,19 +138,22 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
           {steps.map((s, i) => {
             const isActive = step === s.number;
             const isCompleted = step > s.number;
+            const hasError = !canProceed(s.number) && step > s.number;
             return (
               <div key={s.number} className="flex items-center">
                 <button
                   onClick={() => isCompleted && setStep(s.number)}
-                  className={`text-xs px-2 py-1 transition-colors ${
+                  className={`text-xs px-2 py-1 transition-all duration-150 ${
                     isActive
                       ? "bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] font-bold"
                       : isCompleted
-                      ? "text-[#201D1D] dark:text-[#FDFCFC] border border-[#201D1D] dark:border-[#FDFCFC]"
+                      ? hasError
+                        ? "text-[#DC2626] border border-[#DC2626]"
+                        : "text-[#201D1D] dark:text-[#FDFCFC] border border-[#201D1D] dark:border-[#FDFCFC]"
                       : "text-[#9A9898] border border-[#E5E5E5] dark:border-[#2A2A2A]"
                   }`}
                 >
-                  {isCompleted ? <Check className="h-3 w-3" /> : s.title}
+                  {isCompleted && !hasError ? <Check className="h-3 w-3" /> : hasError ? <AlertCircle className="h-3 w-3" /> : s.title}
                 </button>
                 {i < steps.length - 1 && (
                   <div className="w-4 h-px bg-[#E5E5E5] dark:bg-[#2A2A2A] mx-1" />
@@ -134,9 +165,9 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
 
         {/* Step 1: Country */}
         {step === 1 && (
-          <div className="space-y-4">
+          <div className="space-y-4 animate-in fade-in duration-200">
             <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">
-              Dans quel pays se trouve votre etablissement ?
+              Dans quel pays se trouve votre établissement ?
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
               {countries.map((country) => (
@@ -144,10 +175,10 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
                   key={country.code}
                   type="button"
                   onClick={() => handleCountrySelect(country)}
-                  className={`flex items-center gap-2 p-2.5 border text-left text-xs transition-colors ${
+                  className={`flex items-center gap-2 p-2.5 border text-left text-xs transition-all duration-150 ${
                     formData.country === country.code
                       ? "border-[#201D1D] dark:border-[#FDFCFC] bg-[#F8F7F7] dark:bg-[#1A1A1A] font-bold"
-                      : "border-[#E5E5E5] dark:border-[#2A2A2A] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] text-[#646262]"
+                      : "border-[#E5E5E5] dark:border-[#2A2A2A] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] text-[#646262] hover:-translate-y-px"
                   }`}
                 >
                   <span className="text-sm">{country.flag}</span>
@@ -160,22 +191,27 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
 
         {/* Step 2: Institution Info */}
         {step === 2 && (
-          <div className="space-y-4">
+          <div className="space-y-4 animate-in fade-in duration-200">
             <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">
-              Informations de l&apos;etablissement
+              Informations de l&apos;établissement
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Nom de l&apos;etablissement *</Label>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+                  Nom de l&apos;établissement <span className="text-[#DC2626]">*</span>
+                </Label>
                 <Input
                   value={formData.name}
                   onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="Ex: Universite Cheikh Anta Diop"
-                  className="mt-1"
+                  placeholder="Ex: Université Cheikh Anta Diop"
+                  className={`mt-1 ${!formData.name && step > 1 ? "border-[#DC2626] focus:border-[#DC2626]" : ""}`}
                 />
+                {!formData.name && step > 1 && (
+                  <p className="text-[10px] text-[#DC2626] mt-1">Ce champ est requis</p>
+                )}
               </div>
               <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Type d&apos;etablissement</Label>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Type d&apos;établissement</Label>
                 <Select
                   value={formData.type}
                   onValueChange={(v) => setFormData((prev) => ({ ...prev, type: v }))}
@@ -189,7 +225,7 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
                 </Select>
               </div>
               <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Annee academique</Label>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Année académique</Label>
                 <Input
                   value={formData.academieYear}
                   onChange={(e) => setFormData((prev) => ({ ...prev, academieYear: e.target.value }))}
@@ -202,12 +238,12 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
                 <Input
                   value={formData.address}
                   onChange={(e) => setFormData((prev) => ({ ...prev, address: e.target.value }))}
-                  placeholder="Adresse de l'etablissement"
+                  placeholder="Adresse de l'établissement"
                   className="mt-1"
                 />
               </div>
               <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Telephone</Label>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Téléphone</Label>
                 <Input
                   value={formData.phone}
                   onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
@@ -231,7 +267,7 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
 
         {/* Step 3: Schedule */}
         {step === 3 && (
-          <div className="space-y-4">
+          <div className="space-y-4 animate-in fade-in duration-200">
             <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">
               Configuration des horaires
             </h3>
@@ -248,10 +284,13 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
                   </label>
                 ))}
               </div>
+              {formData.workingDays.length === 0 && (
+                <p className="text-[10px] text-[#DC2626] mt-2">Sélectionnez au moins un jour ouvré</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Debut de journee</Label>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Début de journée</Label>
                 <Input
                   type="time"
                   value={formData.dayStartTime}
@@ -260,7 +299,7 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
                 />
               </div>
               <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Fin de journee</Label>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Fin de journée</Label>
                 <Input
                   type="time"
                   value={formData.dayEndTime}
@@ -269,7 +308,7 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
                 />
               </div>
               <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Debut de pause</Label>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Début de pause</Label>
                 <Input
                   type="time"
                   value={formData.breakStartTime}
@@ -287,7 +326,7 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
                 />
               </div>
               <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Duree d&apos;un creneau (min)</Label>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Durée d&apos;un créneau (min)</Label>
                 <Select
                   value={String(formData.slotDuration)}
                   onValueChange={(v) => setFormData((prev) => ({ ...prev, slotDuration: parseInt(v) }))}
@@ -307,13 +346,13 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
 
         {/* Step 4: Education System */}
         {step === 4 && (
-          <div className="space-y-4">
+          <div className="space-y-4 animate-in fade-in duration-200">
             <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">
-              Systeme educatif
+              Système éducatif
             </h3>
             <div className="space-y-4">
               <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Systeme d&apos;enseignement</Label>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Système d&apos;enseignement</Label>
                 <Select
                   value={formData.educationSystem}
                   onValueChange={(v) => setFormData((prev) => ({ ...prev, educationSystem: v }))}
@@ -327,7 +366,7 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
                 </Select>
               </div>
               <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Systeme de notation</Label>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Système de notation</Label>
                 <Select
                   value={formData.gradingSystem}
                   onValueChange={(v) => setFormData((prev) => ({ ...prev, gradingSystem: v }))}
@@ -360,9 +399,9 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
 
         {/* Step 5: Review (Terminal style) */}
         {step === 5 && (
-          <div className="space-y-4">
+          <div className="space-y-4 animate-in fade-in duration-200">
             <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">
-              Recapitulatif
+              Récapitulatif
             </h3>
             <pre className="text-xs text-[#646262] dark:text-[#9A9898] bg-[#F8F7F7] dark:bg-[#1A1A1A] border border-[#E5E5E5] dark:border-[#2A2A2A] p-4 overflow-x-auto leading-relaxed">
               {terminalPreview}
@@ -376,27 +415,32 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
             variant="ghost"
             onClick={() => setStep(step - 1)}
             disabled={step === 1}
-            className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+            className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] transition-all duration-150"
           >
             <ChevronLeft className="h-3 w-3 mr-1" />
-            Precedent
+            Précédent
           </Button>
           {step < 5 ? (
             <Button
-              onClick={() => setStep(step + 1)}
-              disabled={step === 1 && !formData.country}
-              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+              onClick={() => {
+                if (canProceed(step)) {
+                  setStep(step + 1);
+                }
+              }}
+              disabled={!canProceed(step)}
+              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0 transition-all duration-150"
             >
               Suivant
-              <ChevronRight className="h-3 w-3 ml-1" />
+              {!canProceed(step) && <AlertCircle className="h-3 w-3 ml-1" />}
+              {canProceed(step) && <ChevronRight className="h-3 w-3 ml-1" />}
             </Button>
           ) : (
             <Button
               onClick={handleSubmit}
               disabled={isLoading || !formData.name}
-              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0 transition-all duration-150"
             >
-              {isLoading ? "Creation en cours..." : "Creer l'etablissement"}
+              {isLoading ? "Création en cours..." : "Créer l'établissement"}
               <Check className="h-3 w-3 ml-1" />
             </Button>
           )}

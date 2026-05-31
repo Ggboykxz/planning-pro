@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +47,8 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -60,6 +62,13 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
   useEffect(() => {
     loadData();
   }, [institutionId]);
+
+  useEffect(() => {
+    if (dialogOpen) {
+      setTimeout(() => nameRef.current?.focus(), 100);
+      setValidationErrors({});
+    }
+  }, [dialogOpen]);
 
   const loadData = async () => {
     try {
@@ -89,6 +98,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
       academicYear: "2025-2026",
       subjectIds: [],
     });
+    setValidationErrors({});
     setDialogOpen(true);
   };
 
@@ -105,11 +115,16 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
         hoursPerWeek: s.hoursPerWeek || 3,
       })),
     });
+    setValidationErrors({});
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
-    if (!form.name) {
+    const errors: Record<string, boolean> = {};
+    if (!form.name) errors.name = true;
+    setValidationErrors(errors);
+
+    if (Object.keys(errors).length > 0) {
       toast.error("Le nom de la classe est requis");
       return;
     }
@@ -131,7 +146,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        toast.success(editingClass ? "Classe mise a jour" : "Classe creee");
+        toast.success(editingClass ? "Classe mise à jour ✓" : "Classe créée ✓");
         setDialogOpen(false);
         loadData();
       } else {
@@ -149,7 +164,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
     try {
       const res = await fetch(`/api/classes?id=${id}`, { method: "DELETE" });
       if (res.ok) {
-        toast.success("Classe supprimee");
+        toast.success("Classe supprimée ✓");
         loadData();
       }
     } catch {
@@ -163,7 +178,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
       for (const id of selectedIds) {
         await fetch(`/api/classes?id=${id}`, { method: "DELETE" });
       }
-      toast.success(`${selectedIds.size} classe(s) supprimee(s)`);
+      toast.success(`${selectedIds.size} classe(s) supprimée(s) ✓`);
       setSelectedIds(new Set());
       loadData();
     } catch {
@@ -211,9 +226,9 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Classes</h1>
-        <div className="animate-pulse space-y-2">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-10 bg-[#F8F7F7] dark:bg-[#1A1A1A]" />
+        <div className="space-y-2">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-12 skeleton-shimmer" />
           ))}
         </div>
       </div>
@@ -225,7 +240,10 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Classes</h1>
-          <p className="text-xs text-[#9A9898] mt-1">Gez les classes et groupes d&apos;etudiants</p>
+          <p className="text-xs text-[#9A9898] mt-1">
+            Gérez les classes et groupes d&apos;étudiants
+            {classes.length > 0 && <span className="ml-1">({classes.length})</span>}
+          </p>
         </div>
         <Button
           onClick={openCreate}
@@ -251,8 +269,8 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
 
       {filteredClasses.length === 0 ? (
         <EmptyState
-          title={search ? "Aucun resultat" : "Aucune classe"}
-          description={search ? "Essayez un autre terme de recherche" : "Ajoutez votre premiere classe"}
+          title={search ? "Aucun résultat" : "Aucune classe"}
+          description={search ? "Essayez un autre terme de recherche" : "Ajoutez votre première classe"}
           action={
             !search ? (
               <Button onClick={openCreate} variant="ghost" className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A]">
@@ -282,9 +300,9 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
                 </th>
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Nom</th>
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Niveau</th>
-                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Departement</th>
-                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Etudiants</th>
-                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Matieres</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Département</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Étudiants</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Matières</th>
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Emploi du temps</th>
                 <th className="p-2 text-xs font-bold text-right text-[#201D1D] dark:text-[#FDFCFC]">Actions</th>
               </tr>
@@ -325,7 +343,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
                         ? "bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] font-bold"
                         : "border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#9A9898]"
                     }`}>
-                      {cls.timetables.length > 0 ? "Configure" : "Non configure"}
+                      {cls.timetables.length > 0 ? "Configuré" : "Non configuré"}
                     </span>
                   </td>
                   <td className="p-2 text-right">
@@ -333,12 +351,14 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
                       <button
                         onClick={() => openEdit(cls)}
                         className="p-1.5 text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                        title="Modifier"
                       >
                         <Pencil className="h-3 w-3" />
                       </button>
                       <button
                         onClick={() => handleDelete(cls.id)}
                         className="p-1.5 text-[#646262] hover:text-[#DC2626] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                        title="Supprimer"
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -362,13 +382,22 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-xs font-bold">Nom *</Label>
+                <Label className="text-xs font-bold">
+                  Nom <span className="text-[#DC2626]">*</span>
+                </Label>
                 <Input
+                  ref={nameRef}
                   value={form.name}
-                  onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((prev) => ({ ...prev, name: e.target.value }));
+                    if (e.target.value) setValidationErrors((prev) => ({ ...prev, name: false }));
+                  }}
                   placeholder="Ex: L1 Informatique"
-                  className="mt-1"
+                  className={`mt-1 ${validationErrors.name ? "border-[#DC2626] focus:border-[#DC2626]" : ""}`}
                 />
+                {validationErrors.name && (
+                  <p className="text-[10px] text-[#DC2626] mt-1">Requis</p>
+                )}
               </div>
               <div>
                 <Label className="text-xs font-bold">Niveau</Label>
@@ -382,7 +411,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-xs font-bold">Departement</Label>
+                <Label className="text-xs font-bold">Département</Label>
                 <Input
                   value={form.department}
                   onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))}
@@ -391,7 +420,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
                 />
               </div>
               <div>
-                <Label className="text-xs font-bold">Nombre d&apos;etudiants</Label>
+                <Label className="text-xs font-bold">Nombre d&apos;étudiants</Label>
                 <Input
                   type="number"
                   value={form.studentCount}
@@ -401,7 +430,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
               </div>
             </div>
             <div>
-              <Label className="text-xs font-bold">Annee academique</Label>
+              <Label className="text-xs font-bold">Année académique</Label>
               <Input
                 value={form.academicYear}
                 onChange={(e) => setForm((prev) => ({ ...prev, academicYear: e.target.value }))}
@@ -410,7 +439,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
               />
             </div>
             <div>
-              <Label className="text-xs font-bold mb-2 block">Matieres associees</Label>
+              <Label className="text-xs font-bold mb-2 block">Matières associées</Label>
               <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin">
                 {subjects.map((subject) => {
                   const isSelected = form.subjectIds.some((s) => s.subjectId === subject.id);
@@ -434,7 +463,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
                   );
                 })}
                 {subjects.length === 0 && (
-                  <p className="text-xs text-[#9A9898]">Creez d&apos;abord des matieres</p>
+                  <p className="text-xs text-[#9A9898]">Créez d&apos;abord des matières</p>
                 )}
               </div>
             </div>
@@ -446,7 +475,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
               disabled={saving}
               className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
             >
-              {saving ? "Enregistrement..." : editingClass ? "Mettre a jour" : "Creer"}
+              {saving ? "Enregistrement..." : editingClass ? "Mettre à jour" : "Créer"}
             </Button>
           </DialogFooter>
         </DialogContent>

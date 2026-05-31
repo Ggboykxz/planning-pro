@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Save, Trash2, AlertTriangle } from "lucide-react";
+import { Save, Trash2, AlertTriangle, ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { countries, institutionTypes, educationSystems, gradingSystems, semesterSystems } from "@/lib/countries";
 import { toast } from "sonner";
 import {
@@ -57,10 +57,27 @@ interface SettingsViewProps {
 
 const allDays = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
 
+function CollapsibleSection({ title, defaultOpen = true, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border border-[#E5E5E5] dark:border-[#2A2A2A]">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full p-4 bg-[#F8F7F7] dark:bg-[#1A1A1A] border-b border-[#E5E5E5] dark:border-[#2A2A2A] flex items-center justify-between text-left hover:bg-[#F0F0F0] dark:hover:bg-[#222222] transition-colors"
+      >
+        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">{title}</p>
+        {open ? <ChevronDown className="h-3 w-3 text-[#9A9898]" /> : <ChevronRight className="h-3 w-3 text-[#9A9898]" />}
+      </button>
+      {open && <div className="p-6">{children}</div>}
+    </div>
+  );
+}
+
 export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
   const [institution, setInstitution] = useState<InstitutionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -82,6 +99,9 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
     semesterSystem: "semestriel",
   });
 
+  // Store original form for change detection
+  const [originalForm, setOriginalForm] = useState(form);
+
   useEffect(() => {
     loadInstitution();
   }, [institutionId]);
@@ -94,7 +114,7 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
       } catch {
         workingDays = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"];
       }
-      setForm({
+      const newForm = {
         name: institution.name,
         type: institution.type,
         country: institution.country,
@@ -112,9 +132,16 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
         educationSystem: institution.educationSystem || "LMD",
         gradingSystem: institution.gradingSystem || "20",
         semesterSystem: institution.semesterSystem || "semestriel",
-      });
+      };
+      setForm(newForm);
+      setOriginalForm(newForm);
     }
   }, [institution]);
+
+  // Detect changes
+  useEffect(() => {
+    setHasChanges(JSON.stringify(form) !== JSON.stringify(originalForm));
+  }, [form, originalForm]);
 
   const loadInstitution = async () => {
     try {
@@ -140,7 +167,9 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
         body: JSON.stringify({ id: institutionId, ...form }),
       });
       if (res.ok) {
-        toast.success("Parametres sauvegardes");
+        toast.success("Paramètres sauvegardés ✓", { description: `${form.name} — mis à jour` });
+        setOriginalForm(form);
+        setHasChanges(false);
         onUpdate();
       } else {
         toast.error("Erreur lors de la sauvegarde");
@@ -155,10 +184,10 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
   const handleReset = async () => {
     try {
       await fetch(`/api/institution?id=${institutionId}`, { method: "DELETE" });
-      toast.success("Donnees reinitialisees");
+      toast.success("Données réinitialisées");
       onUpdate();
     } catch {
-      toast.error("Erreur lors de la reinitialisation");
+      toast.error("Erreur lors de la réinitialisation");
     }
   };
 
@@ -196,10 +225,10 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
   if (loading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Parametres</h1>
-        <div className="animate-pulse space-y-4">
+        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Paramètres</h1>
+        <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 bg-[#F8F7F7] dark:bg-[#1A1A1A]" />
+            <div key={i} className="h-32 skeleton-shimmer" />
           ))}
         </div>
       </div>
@@ -209,26 +238,33 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
   // Config preview
   const configPreview = `
 pays:           "${form.country}"
-etablissement:  "${form.name}"
+établissement:  "${form.name}"
 type:           "${institutionTypes.find(t => t.value === form.type)?.label || form.type}"
 horaires:       "${form.dayStartTime} — ${form.dayEndTime}"
 pause:          "${form.breakStartTime} — ${form.breakEndTime}"
 jours:          [${form.workingDays.map(d => `"${d}"`).join(", ")}]
-systeme:        "${educationSystems.find(s => s.value === form.educationSystem)?.label || form.educationSystem}"
+système:        "${educationSystems.find(s => s.value === form.educationSystem)?.label || form.educationSystem}"
 notation:       "/${form.gradingSystem}"
 rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.label || form.semesterSystem}"`;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Parametres</h1>
-        <p className="text-xs text-[#9A9898] mt-1">Configuration de votre etablissement</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Paramètres</h1>
+          <p className="text-xs text-[#9A9898] mt-1">Configuration de votre établissement</p>
+        </div>
+        {hasChanges && (
+          <span className="text-[10px] font-bold text-[#D97706] border border-[#D97706] px-2 py-1">
+            Modifications non sauvegardées
+          </span>
+        )}
       </div>
 
       {/* Config preview */}
       <div className="border border-[#E5E5E5] dark:border-[#2A2A2A]">
         <div className="p-3 bg-[#F8F7F7] dark:bg-[#1A1A1A] border-b border-[#E5E5E5] dark:border-[#2A2A2A]">
-          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Apercu de la configuration</p>
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Aperçu de la configuration</p>
         </div>
         <pre className="p-4 text-xs text-[#646262] dark:text-[#9A9898] overflow-x-auto leading-relaxed">
           {configPreview}
@@ -236,11 +272,10 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
       </div>
 
       {/* Institution Info */}
-      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Informations generales</p>
+      <CollapsibleSection title="Informations générales">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <Label className="text-xs font-bold">Nom de l&apos;etablissement</Label>
+            <Label className="text-xs font-bold">Nom de l&apos;établissement</Label>
             <Input
               value={form.name}
               onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
@@ -274,7 +309,7 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
             <Input value={form.timezone} disabled className="mt-1 bg-[#F8F7F7] dark:bg-[#1A1A1A]" />
           </div>
           <div>
-            <Label className="text-xs font-bold">Annee academique</Label>
+            <Label className="text-xs font-bold">Année académique</Label>
             <Input
               value={form.academieYear}
               onChange={(e) => setForm((prev) => ({ ...prev, academieYear: e.target.value }))}
@@ -291,7 +326,7 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
             />
           </div>
           <div>
-            <Label className="text-xs font-bold">Telephone</Label>
+            <Label className="text-xs font-bold">Téléphone</Label>
             <Input
               value={form.phone}
               onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
@@ -307,14 +342,13 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
             />
           </div>
         </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Schedule Config */}
-      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Configuration des horaires</p>
+      <CollapsibleSection title="Configuration des horaires">
         <div className="space-y-4">
           <div>
-            <Label className="text-xs font-bold">Jours ouvres</Label>
+            <Label className="text-xs font-bold">Jours ouvrés</Label>
             <div className="flex flex-wrap gap-2 mt-2">
               {allDays.map((day) => (
                 <label key={day} className="flex items-center gap-2 cursor-pointer">
@@ -329,7 +363,7 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <div>
-              <Label className="text-xs font-bold">Debut de journee</Label>
+              <Label className="text-xs font-bold">Début de journée</Label>
               <Input
                 type="time"
                 value={form.dayStartTime}
@@ -338,7 +372,7 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
               />
             </div>
             <div>
-              <Label className="text-xs font-bold">Fin de journee</Label>
+              <Label className="text-xs font-bold">Fin de journée</Label>
               <Input
                 type="time"
                 value={form.dayEndTime}
@@ -347,7 +381,7 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
               />
             </div>
             <div>
-              <Label className="text-xs font-bold">Duree creneau (min)</Label>
+              <Label className="text-xs font-bold">Durée créneau (min)</Label>
               <Select
                 value={String(form.slotDuration)}
                 onValueChange={(v) => setForm((prev) => ({ ...prev, slotDuration: parseInt(v) }))}
@@ -362,7 +396,7 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
               </Select>
             </div>
             <div>
-              <Label className="text-xs font-bold">Debut de pause</Label>
+              <Label className="text-xs font-bold">Début de pause</Label>
               <Input
                 type="time"
                 value={form.breakStartTime}
@@ -381,14 +415,13 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
             </div>
           </div>
         </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Education System */}
-      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Systeme educatif</p>
+      <CollapsibleSection title="Système éducatif">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <Label className="text-xs font-bold">Systeme d&apos;enseignement</Label>
+            <Label className="text-xs font-bold">Système d&apos;enseignement</Label>
             <Select
               value={form.educationSystem}
               onValueChange={(v) => setForm((prev) => ({ ...prev, educationSystem: v }))}
@@ -402,7 +435,7 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
             </Select>
           </div>
           <div>
-            <Label className="text-xs font-bold">Systeme de notation</Label>
+            <Label className="text-xs font-bold">Système de notation</Label>
             <Select
               value={form.gradingSystem}
               onValueChange={(v) => setForm((prev) => ({ ...prev, gradingSystem: v }))}
@@ -430,7 +463,7 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
             </Select>
           </div>
         </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-[#E5E5E5] dark:border-[#2A2A2A]">
@@ -438,19 +471,19 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
           <AlertDialogTrigger asChild>
             <Button variant="ghost" className="text-xs text-[#DC2626] hover:text-[#DC2626] gap-1">
               <Trash2 className="h-3 w-3" />
-              Reinitialiser toutes les donnees
+              Réinitialiser toutes les données
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle className="text-sm font-bold flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-[#DC2626]" />
-                Confirmer la reinitialisation
+                Confirmer la réinitialisation
               </AlertDialogTitle>
               <AlertDialogDescription className="text-xs">
-                Cette action supprimera toutes les donnees de votre etablissement
-                (enseignants, salles, matieres, classes, emplois du temps). Cette
-                action est irreversible.
+                Cette action supprimera toutes les données de votre établissement
+                (enseignants, salles, matières, classes, emplois du temps). Cette
+                action est irréversible.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -464,11 +497,17 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
 
         <Button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || !hasChanges}
           className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0 gap-1"
         >
-          <Save className="h-3 w-3" />
-          {saving ? "Sauvegarde..." : "Sauvegarder les parametres"}
+          {saving ? (
+            "Sauvegarde..."
+          ) : (
+            <>
+              <Save className="h-3 w-3" />
+              Sauvegarder les paramètres
+            </>
+          )}
         </Button>
       </div>
     </div>

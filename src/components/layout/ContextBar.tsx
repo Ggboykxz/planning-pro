@@ -18,7 +18,7 @@ export function ContextBar({ items, activeId, onSelect }: ContextBarProps) {
               key={item.id}
               onClick={() => onSelect(item.id)}
               className={cn(
-                "text-xs pb-2 pt-2 border-b-2 transition-colors",
+                "text-xs pb-2 pt-2 border-b-2 transition-all duration-150",
                 activeId === item.id
                   ? "border-[#201D1D] dark:border-[#FDFCFC] text-[#201D1D] dark:text-[#FDFCFC] font-bold"
                   : "border-transparent text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
