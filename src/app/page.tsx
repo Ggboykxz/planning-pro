@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAppStore } from "@/lib/store";
-import { AppSidebar } from "@/components/layout/AppSidebar";
-import { TopBar } from "@/components/layout/TopBar";
+import { TopNav } from "@/components/layout/TopNav";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { DashboardView } from "@/components/dashboard/DashboardView";
 import { TimetableView } from "@/components/timetable/TimetableView";
@@ -80,7 +79,6 @@ export default function HomePage() {
         setInstitution(inst);
         setInstitutionId(inst.id);
 
-        // Generate time slots for the institution
         await fetch("/api/timeslots", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -101,12 +99,12 @@ export default function HomePage() {
   // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0A0A0A]">
         <div className="text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-white font-bold text-xl mx-auto mb-4 animate-pulse">
-            P
-          </div>
-          <p className="text-muted-foreground">Chargement de PlanningPro...</p>
+          <p className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] animate-pulse">
+            PlanningPro_
+          </p>
+          <p className="text-xs text-[#9A9898] mt-1">Chargement...</p>
         </div>
       </div>
     );
@@ -122,7 +120,7 @@ export default function HomePage() {
     );
   }
 
-  // Main app layout
+  // Main app layout with top nav
   const renderSection = () => {
     switch (currentSection) {
       case "dashboard":
@@ -145,41 +143,13 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Sidebar */}
-      <div className="hidden lg:flex shrink-0">
-        <AppSidebar institutionName={institution.name} />
-      </div>
-
-      {/* Mobile sidebar overlay */}
-      <MobileSidebar institutionName={institution.name} />
-
-      {/* Main content */}
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <TopBar institutionName={institution.name} />
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin">
+    <div className="min-h-screen flex flex-col bg-white dark:bg-[#0A0A0A]">
+      <TopNav institutionName={institution.name} />
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-[1080px] mx-auto px-4 sm:px-6 py-6">
           {renderSection()}
-        </main>
-      </div>
-    </div>
-  );
-}
-
-// Mobile sidebar component
-function MobileSidebar({ institutionName }: { institutionName: string }) {
-  const { sidebarOpen, setSidebarOpen } = useAppStore();
-
-  if (!sidebarOpen) return null;
-
-  return (
-    <div className="lg:hidden fixed inset-0 z-50 flex">
-      <div className="w-64 shrink-0">
-        <AppSidebar institutionName={institutionName} />
-      </div>
-      <div
-        className="flex-1 bg-black/50"
-        onClick={() => setSidebarOpen(false)}
-      />
+        </div>
+      </main>
     </div>
   );
 }

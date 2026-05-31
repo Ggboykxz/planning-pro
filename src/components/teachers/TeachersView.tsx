@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -14,21 +12,15 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Users, Plus, Pencil, Trash2, Mail, Phone, BookOpen } from "lucide-react";
+import { Plus, Pencil, Trash2, BookOpen } from "lucide-react";
+import { SearchInput } from "@/components/shared/SearchInput";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { toast } from "sonner";
 
 interface TeacherData {
@@ -60,6 +52,8 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<TeacherData | null>(null);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [form, setForm] = useState({
     firstName: "",
@@ -120,12 +114,12 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
 
   const handleSave = async () => {
     if (!form.firstName || !form.lastName) {
-      toast.error("Le prénom et le nom sont requis");
+      toast.error("Le prenom et le nom sont requis");
       return;
     }
     setSaving(true);
     try {
-      const url = editingTeacher ? "/api/teachers" : "/api/teachers";
+      const url = "/api/teachers";
       const method = editingTeacher ? "PUT" : "POST";
       const body = {
         ...(editingTeacher ? { id: editingTeacher.id } : {}),
@@ -138,11 +132,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        toast.success(
-          editingTeacher
-            ? "Enseignant mis à jour"
-            : "Enseignant créé avec succès"
-        );
+        toast.success(editingTeacher ? "Enseignant mis a jour" : "Enseignant cree");
         setDialogOpen(false);
         loadData();
       } else {
@@ -160,9 +150,23 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
     try {
       const res = await fetch(`/api/teachers?id=${id}`, { method: "DELETE" });
       if (res.ok) {
-        toast.success("Enseignant supprimé");
+        toast.success("Enseignant supprime");
         loadData();
       }
+    } catch {
+      toast.error("Erreur lors de la suppression");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Supprimer ${selectedIds.size} enseignant(s) ?`)) return;
+    try {
+      for (const id of selectedIds) {
+        await fetch(`/api/teachers?id=${id}`, { method: "DELETE" });
+      }
+      toast.success(`${selectedIds.size} enseignant(s) supprime(s)`);
+      setSelectedIds(new Set());
+      loadData();
     } catch {
       toast.error("Erreur lors de la suppression");
     }
@@ -177,13 +181,26 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
     }));
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const filteredTeachers = teachers.filter((t) =>
+    `${t.firstName} ${t.lastName} ${t.specialization || ""}`.toLowerCase().includes(search.toLowerCase())
+  );
+
   if (loading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Enseignants</h1>
-        <div className="animate-pulse space-y-4">
+        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Enseignants</h1>
+        <div className="animate-pulse space-y-2">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 bg-muted rounded" />
+            <div key={i} className="h-10 bg-[#F8F7F7] dark:bg-[#1A1A1A]" />
           ))}
         </div>
       </div>
@@ -194,252 +211,261 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Enseignants</h1>
-          <p className="text-muted-foreground">
-            Gérez les enseignants de votre établissement
-          </p>
+          <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Enseignants</h1>
+          <p className="text-xs text-[#9A9898] mt-1">Gez les enseignants de votre etablissement</p>
         </div>
-        <Button onClick={openCreate} className="bg-emerald-600 hover:bg-emerald-700">
-          <Plus className="h-4 w-4 mr-2" />
+        <Button
+          onClick={openCreate}
+          className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+        >
+          <Plus className="h-3 w-3 mr-1" />
           Ajouter un enseignant
         </Button>
       </div>
 
-      {teachers.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <Users className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">Aucun enseignant</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Ajoutez votre premier enseignant pour commencer
-            </p>
-          </CardContent>
-        </Card>
+      {/* Search & Bulk actions */}
+      <div className="flex items-center gap-3">
+        <div className="w-64">
+          <SearchInput value={search} onChange={setSearch} placeholder="Rechercher un enseignant..." />
+        </div>
+        {selectedIds.size > 0 && (
+          <Button
+            variant="ghost"
+            onClick={handleBulkDelete}
+            className="text-xs text-[#DC2626] hover:text-[#DC2626]"
+          >
+            <Trash2 className="h-3 w-3 mr-1" />
+            Supprimer ({selectedIds.size})
+          </Button>
+        )}
+      </div>
+
+      {filteredTeachers.length === 0 ? (
+        <EmptyState
+          title={search ? "Aucun resultat" : "Aucun enseignant"}
+          description={search ? "Essayez un autre terme de recherche" : "Ajoutez votre premier enseignant pour commencer"}
+          action={
+            !search ? (
+              <Button
+                onClick={openCreate}
+                variant="ghost"
+                className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A]"
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Ajouter
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nom</TableHead>
-                    <TableHead>Contact</TableHead>
-                    <TableHead>Spécialisation</TableHead>
-                    <TableHead>Matières</TableHead>
-                    <TableHead>Charge</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {teachers.map((teacher) => {
-                    const assignedSlots = teacher.timetableSlots.length;
-                    const maxHours = teacher.maxHoursPerWeek || 0;
-                    const loadPct = maxHours > 0 ? Math.round((assignedSlots / maxHours) * 100) : 0;
-                    return (
-                      <TableRow key={teacher.id}>
-                        <TableCell className="font-medium">
-                          {teacher.firstName} {teacher.lastName}
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            {teacher.email && (
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Mail className="h-3 w-3" />
-                                {teacher.email}
-                              </div>
-                            )}
-                            {teacher.phone && (
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Phone className="h-3 w-3" />
-                                {teacher.phone}
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {teacher.specialization && (
-                            <Badge variant="outline">{teacher.specialization}</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {teacher.subjectAssignments.map((sa) => (
-                              <Badge key={sa.subject.id} variant="secondary" className="text-xs">
-                                {sa.subject.name}
-                              </Badge>
-                            ))}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div className="text-sm">
-                              {assignedSlots}h / {maxHours}h
-                            </div>
-                            <div
-                              className={`h-2 w-16 rounded-full bg-muted overflow-hidden`}
-                            >
-                              <div
-                                className={`h-full rounded-full ${
-                                  loadPct > 80
-                                    ? "bg-rose-500"
-                                    : loadPct > 50
-                                    ? "bg-amber-500"
-                                    : "bg-emerald-500"
-                                }`}
-                                style={{ width: `${Math.min(loadPct, 100)}%` }}
-                              />
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => openEdit(teacher)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDelete(teacher.id)}
-                              className="text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-[#F8F7F7] dark:bg-[#1A1A1A]">
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC] w-8">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === filteredTeachers.length && filteredTeachers.length > 0}
+                    onChange={() => {
+                      if (selectedIds.size === filteredTeachers.length) {
+                        setSelectedIds(new Set());
+                      } else {
+                        setSelectedIds(new Set(filteredTeachers.map((t) => t.id)));
+                      }
+                    }}
+                    className="h-3 w-3 accent-[#201D1D] dark:accent-[#FDFCFC]"
+                  />
+                </th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Nom</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Contact</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Specialisation</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Matieres</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Charge</th>
+                <th className="p-2 text-xs font-bold text-right text-[#201D1D] dark:text-[#FDFCFC]">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredTeachers.map((teacher) => {
+                const assignedSlots = teacher.timetableSlots.length;
+                const maxHours = teacher.maxHoursPerWeek || 0;
+                const loadPct = maxHours > 0 ? Math.round((assignedSlots / maxHours) * 100) : 0;
+                return (
+                  <tr
+                    key={teacher.id}
+                    className="border-t border-[#E5E5E5] dark:border-[#2A2A2A] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                  >
+                    <td className="p-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(teacher.id)}
+                        onChange={() => toggleSelect(teacher.id)}
+                        className="h-3 w-3 accent-[#201D1D] dark:accent-[#FDFCFC]"
+                      />
+                    </td>
+                    <td className="p-2 text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+                      {teacher.firstName} {teacher.lastName}
+                    </td>
+                    <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">
+                      {teacher.email && <p>{teacher.email}</p>}
+                      {teacher.phone && <p>{teacher.phone}</p>}
+                    </td>
+                    <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">
+                      {teacher.specialization || "—"}
+                    </td>
+                    <td className="p-2">
+                      <div className="flex flex-wrap gap-1">
+                        {teacher.subjectAssignments.map((sa) => (
+                          <span key={sa.subject.id} className="text-[10px] px-1.5 py-0.5 border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#646262] dark:text-[#9A9898]">
+                            {sa.subject.name}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="p-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-[#646262] dark:text-[#9A9898]">
+                          {assignedSlots}h / {maxHours}h
+                        </span>
+                        <div className="w-12 h-1 bg-[#F8F7F7] dark:bg-[#1A1A1A]">
+                          <div
+                            className={`h-full ${
+                              loadPct > 80 ? "bg-[#DC2626]" : loadPct > 50 ? "bg-[#D97706]" : "bg-[#201D1D] dark:bg-[#FDFCFC]"
+                            }`}
+                            style={{ width: `${Math.min(loadPct, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-2 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => openEdit(teacher)}
+                          className="p-1.5 text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(teacher.id)}
+                          className="p-1.5 text-[#646262] hover:text-[#DC2626] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-sm font-bold">
               {editingTeacher ? "Modifier l'enseignant" : "Nouvel enseignant"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Prénom *</Label>
+                <Label className="text-xs font-bold">Prenom *</Label>
                 <Input
                   value={form.firstName}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, firstName: e.target.value }))
-                  }
-                  placeholder="Prénom"
+                  onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))}
+                  placeholder="Prenom"
+                  className="mt-1"
                 />
               </div>
               <div>
-                <Label>Nom *</Label>
+                <Label className="text-xs font-bold">Nom *</Label>
                 <Input
                   value={form.lastName}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, lastName: e.target.value }))
-                  }
+                  onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))}
                   placeholder="Nom"
+                  className="mt-1"
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Email</Label>
+                <Label className="text-xs font-bold">Email</Label>
                 <Input
                   type="email"
                   value={form.email}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, email: e.target.value }))
-                  }
+                  onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
                   placeholder="email@exemple.com"
+                  className="mt-1"
                 />
               </div>
               <div>
-                <Label>Téléphone</Label>
+                <Label className="text-xs font-bold">Telephone</Label>
                 <Input
                   value={form.phone}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, phone: e.target.value }))
-                  }
+                  onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
                   placeholder="+221 7X XXX XXXX"
+                  className="mt-1"
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Spécialisation</Label>
+                <Label className="text-xs font-bold">Specialisation</Label>
                 <Input
                   value={form.specialization}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      specialization: e.target.value,
-                    }))
-                  }
-                  placeholder="Informatique, Mathématiques..."
+                  onChange={(e) => setForm((prev) => ({ ...prev, specialization: e.target.value }))}
+                  placeholder="Informatique, Mathematiques..."
+                  className="mt-1"
                 />
               </div>
               <div>
-                <Label>Heures max / semaine</Label>
+                <Label className="text-xs font-bold">Heures max / semaine</Label>
                 <Input
                   type="number"
                   value={form.maxHoursPerWeek}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      maxHoursPerWeek: parseInt(e.target.value) || 0,
-                    }))
-                  }
+                  onChange={(e) => setForm((prev) => ({ ...prev, maxHoursPerWeek: parseInt(e.target.value) || 0 }))}
+                  className="mt-1"
                 />
               </div>
             </div>
             <div>
-              <Label className="flex items-center gap-2 mb-2">
-                <BookOpen className="h-4 w-4" />
-                Matières enseignées
+              <Label className="text-xs font-bold flex items-center gap-1 mb-2">
+                <BookOpen className="h-3 w-3" />
+                Matieres enseignees
               </Label>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1">
                 {subjects.map((subject) => (
-                  <Badge
+                  <button
                     key={subject.id}
-                    variant={
-                      form.subjectIds.includes(subject.id)
-                        ? "default"
-                        : "outline"
-                    }
-                    className="cursor-pointer"
+                    type="button"
                     onClick={() => toggleSubject(subject.id)}
+                    className={`text-[10px] px-2 py-1 border transition-colors ${
+                      form.subjectIds.includes(subject.id)
+                        ? "border-[#201D1D] dark:border-[#FDFCFC] bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] font-bold"
+                        : "border-[#E5E5E5] dark:border-[#2A2A2A] text-[#646262] dark:text-[#9A9898] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]"
+                    }`}
                   >
                     {subject.name}
-                  </Badge>
+                  </button>
                 ))}
                 {subjects.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    Créez d&apos;abord des matières
-                  </p>
+                  <p className="text-xs text-[#9A9898]">Creez d&apos;abord des matieres</p>
                 )}
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="ghost" onClick={() => setDialogOpen(false)} className="text-xs">
               Annuler
             </Button>
             <Button
               onClick={handleSave}
               disabled={saving}
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
             >
-              {saving ? "Enregistrement..." : editingTeacher ? "Mettre à jour" : "Créer"}
+              {saving ? "Enregistrement..." : editingTeacher ? "Mettre a jour" : "Creer"}
             </Button>
           </DialogFooter>
         </DialogContent>

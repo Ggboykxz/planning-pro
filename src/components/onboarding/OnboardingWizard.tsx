@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -14,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { countries, institutionTypes, educationSystems, gradingSystems, semesterSystems, type CountryPreset } from "@/lib/countries";
-import { ChevronLeft, ChevronRight, Check, Globe, Building2, Clock, GraduationCap, Eye } from "lucide-react";
+import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 
 interface OnboardingWizardProps {
   onComplete: (data: Record<string, unknown>) => void;
@@ -76,452 +75,333 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
   };
 
   const steps = [
-    { number: 1, title: "Pays", icon: Globe },
-    { number: 2, title: "Établissement", icon: Building2 },
-    { number: 3, title: "Horaires", icon: Clock },
-    { number: 4, title: "Système éducatif", icon: GraduationCap },
-    { number: 5, title: "Confirmation", icon: Eye },
+    { number: 1, title: "Pays" },
+    { number: 2, title: "Etablissement" },
+    { number: 3, title: "Horaires" },
+    { number: 4, title: "Systeme" },
+    { number: 5, title: "Confirmation" },
   ];
 
+  // Terminal preview for step 5
+  const terminalPreview = `
+┌─ Configuration ──────────────────────────┐
+│ pays:           "${formData.country || "..."}"                     │
+│ etablissement:  "${formData.name || "..."}"                     │
+│ type:           "${institutionTypes.find(t => t.value === formData.type)?.label || "..."}"     │
+│ horaires:       "${formData.dayStartTime} — ${formData.dayEndTime}"          │
+│ pause:          "${formData.breakStartTime} — ${formData.breakEndTime}"             │
+│ jours:          "${formData.workingDays.join(", ")}"   │
+│ systeme:        "${educationSystems.find(s => s.value === formData.educationSystem)?.label || "..."}"  │
+│ notation:       "/${formData.gradingSystem}"                     │
+│ rythme:         "${semesterSystems.find(s => s.value === formData.semesterSystem)?.label || "..."}"     │
+└──────────────────────────────────────────┘`;
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 p-4">
-      <Card className="w-full max-w-2xl shadow-xl border-0">
-        <CardHeader className="text-center pb-2">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white font-bold">
-              P
+    <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0A0A0A] p-4">
+      <div className="w-full max-w-[640px]">
+        {/* Header */}
+        <div className="mb-8">
+          <p className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC]">PlanningPro_</p>
+          <p className="text-xs text-[#9A9898] mt-1">Configuration initiale</p>
+        </div>
+
+        {/* Step indicators */}
+        <div className="flex items-center gap-1 mb-8">
+          {steps.map((s, i) => {
+            const isActive = step === s.number;
+            const isCompleted = step > s.number;
+            return (
+              <div key={s.number} className="flex items-center">
+                <button
+                  onClick={() => isCompleted && setStep(s.number)}
+                  className={`text-xs px-2 py-1 transition-colors ${
+                    isActive
+                      ? "bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] font-bold"
+                      : isCompleted
+                      ? "text-[#201D1D] dark:text-[#FDFCFC] border border-[#201D1D] dark:border-[#FDFCFC]"
+                      : "text-[#9A9898] border border-[#E5E5E5] dark:border-[#2A2A2A]"
+                  }`}
+                >
+                  {isCompleted ? <Check className="h-3 w-3" /> : s.title}
+                </button>
+                {i < steps.length - 1 && (
+                  <div className="w-4 h-px bg-[#E5E5E5] dark:bg-[#2A2A2A] mx-1" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Step 1: Country */}
+        {step === 1 && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">
+              Dans quel pays se trouve votre etablissement ?
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
+              {countries.map((country) => (
+                <button
+                  key={country.code}
+                  type="button"
+                  onClick={() => handleCountrySelect(country)}
+                  className={`flex items-center gap-2 p-2.5 border text-left text-xs transition-colors ${
+                    formData.country === country.code
+                      ? "border-[#201D1D] dark:border-[#FDFCFC] bg-[#F8F7F7] dark:bg-[#1A1A1A] font-bold"
+                      : "border-[#E5E5E5] dark:border-[#2A2A2A] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] text-[#646262]"
+                  }`}
+                >
+                  <span className="text-sm">{country.flag}</span>
+                  <span className="truncate">{country.name}</span>
+                </button>
+              ))}
             </div>
-            <span className="text-2xl font-bold">PlanningPro</span>
           </div>
-          <CardTitle className="text-xl">Configuration initiale</CardTitle>
-          <CardDescription>
-            Configurez votre établissement pour commencer
-          </CardDescription>
+        )}
 
-          {/* Step indicators */}
-          <div className="flex items-center justify-center gap-2 mt-6">
-            {steps.map((s, i) => {
-              const Icon = s.icon;
-              const isActive = step === s.number;
-              const isCompleted = step > s.number;
-              return (
-                <div key={s.number} className="flex items-center">
-                  <div
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                      isActive
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
-                        : isCompleted
-                        ? "bg-emerald-600 text-white"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {isCompleted ? (
-                      <Check className="h-3 w-3" />
-                    ) : (
-                      <Icon className="h-3 w-3" />
-                    )}
-                    <span className="hidden sm:inline">{s.title}</span>
-                  </div>
-                  {i < steps.length - 1 && (
-                    <div
-                      className={`w-6 h-0.5 mx-1 ${
-                        isCompleted ? "bg-emerald-600" : "bg-muted"
-                      }`}
+        {/* Step 2: Institution Info */}
+        {step === 2 && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">
+              Informations de l&apos;etablissement
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Nom de l&apos;etablissement *</Label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="Ex: Universite Cheikh Anta Diop"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Type d&apos;etablissement</Label>
+                <Select
+                  value={formData.type}
+                  onValueChange={(v) => setFormData((prev) => ({ ...prev, type: v }))}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {institutionTypes.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Annee academique</Label>
+                <Input
+                  value={formData.academieYear}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, academieYear: e.target.value }))}
+                  placeholder="2025-2026"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Adresse</Label>
+                <Input
+                  value={formData.address}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, address: e.target.value }))}
+                  placeholder="Adresse de l'etablissement"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Telephone</Label>
+                <Input
+                  value={formData.phone}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
+                  placeholder="+221 33 800 0000"
+                  className="mt-1"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Email</Label>
+                <Input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="contact@etablissement.edu"
+                  className="mt-1"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Schedule */}
+        {step === 3 && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">
+              Configuration des horaires
+            </h3>
+            <div>
+              <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Jours ouvrés</Label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {allDays.map((day) => (
+                  <label key={day} className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={formData.workingDays.includes(day)}
+                      onCheckedChange={() => handleDayToggle(day)}
                     />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </CardHeader>
-
-        <CardContent className="pt-6">
-          {/* Step 1: Country */}
-          {step === 1 && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold mb-4">
-                🌍 Dans quel pays se trouve votre établissement ?
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {countries.map((country) => (
-                  <button
-                    key={country.code}
-                    type="button"
-                    onClick={() => handleCountrySelect(country)}
-                    className={`flex items-center gap-2 p-3 rounded-lg border text-left text-sm transition-all hover:shadow-md ${
-                      formData.country === country.code
-                        ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950 ring-2 ring-emerald-200 dark:ring-emerald-800"
-                        : "border-border hover:border-emerald-300"
-                    }`}
-                  >
-                    <span className="text-xl">{country.flag}</span>
-                    <span className="truncate">{country.name}</span>
-                  </button>
+                    <span className="text-xs text-[#646262]">{day}</span>
+                  </label>
                 ))}
               </div>
             </div>
-          )}
-
-          {/* Step 2: Institution Info */}
-          {step === 2 && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold mb-4">
-                🏫 Informations de l&apos;établissement
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                  <Label htmlFor="name">Nom de l&apos;établissement *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, name: e.target.value }))
-                    }
-                    placeholder="Ex: Université Cheikh Anta Diop"
-                  />
-                </div>
-                <div>
-                  <Label>Type d&apos;établissement</Label>
-                  <Select
-                    value={formData.type}
-                    onValueChange={(v) =>
-                      setFormData((prev) => ({ ...prev, type: v }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {institutionTypes.map((t) => (
-                        <SelectItem key={t.value} value={t.value}>
-                          {t.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Année académique</Label>
-                  <Input
-                    value={formData.academieYear}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        academieYear: e.target.value,
-                      }))
-                    }
-                    placeholder="2025-2026"
-                  />
-                </div>
-                <div>
-                  <Label>Adresse</Label>
-                  <Input
-                    value={formData.address}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, address: e.target.value }))
-                    }
-                    placeholder="Adresse de l'établissement"
-                  />
-                </div>
-                <div>
-                  <Label>Téléphone</Label>
-                  <Input
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, phone: e.target.value }))
-                    }
-                    placeholder="+221 33 800 0000"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, email: e.target.value }))
-                    }
-                    placeholder="contact@etablissement.edu"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Schedule */}
-          {step === 3 && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold mb-4">
-                ⏰ Configuration des horaires
-              </h3>
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Jours ouvrés</Label>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {allDays.map((day) => (
-                    <label
-                      key={day}
-                      className="flex items-center gap-2 cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={formData.workingDays.includes(day)}
-                        onCheckedChange={() => handleDayToggle(day)}
-                      />
-                      <span className="text-sm">{day}</span>
-                    </label>
-                  ))}
-                </div>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Debut de journee</Label>
+                <Input
+                  type="time"
+                  value={formData.dayStartTime}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, dayStartTime: e.target.value }))}
+                  className="mt-1"
+                />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Début de journée</Label>
-                  <Input
-                    type="time"
-                    value={formData.dayStartTime}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        dayStartTime: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div>
-                  <Label>Fin de journée</Label>
-                  <Input
-                    type="time"
-                    value={formData.dayEndTime}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        dayEndTime: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div>
-                  <Label>Début de pause</Label>
-                  <Input
-                    type="time"
-                    value={formData.breakStartTime}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        breakStartTime: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div>
-                  <Label>Fin de pause</Label>
-                  <Input
-                    type="time"
-                    value={formData.breakEndTime}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        breakEndTime: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div>
-                  <Label>Durée d&apos;un créneau (min)</Label>
-                  <Select
-                    value={String(formData.slotDuration)}
-                    onValueChange={(v) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        slotDuration: parseInt(v),
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="45">45 minutes</SelectItem>
-                      <SelectItem value="60">1 heure</SelectItem>
-                      <SelectItem value="90">1h30</SelectItem>
-                      <SelectItem value="120">2 heures</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Fin de journee</Label>
+                <Input
+                  type="time"
+                  value={formData.dayEndTime}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, dayEndTime: e.target.value }))}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Debut de pause</Label>
+                <Input
+                  type="time"
+                  value={formData.breakStartTime}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, breakStartTime: e.target.value }))}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Fin de pause</Label>
+                <Input
+                  type="time"
+                  value={formData.breakEndTime}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, breakEndTime: e.target.value }))}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Duree d&apos;un creneau (min)</Label>
+                <Select
+                  value={String(formData.slotDuration)}
+                  onValueChange={(v) => setFormData((prev) => ({ ...prev, slotDuration: parseInt(v) }))}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="45">45 minutes</SelectItem>
+                    <SelectItem value="60">1 heure</SelectItem>
+                    <SelectItem value="90">1h30</SelectItem>
+                    <SelectItem value="120">2 heures</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-          )}
-
-          {/* Step 4: Education System */}
-          {step === 4 && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold mb-4">
-                🎓 Système éducatif
-              </h3>
-              <div className="space-y-4">
-                <div>
-                  <Label>Système d&apos;enseignement</Label>
-                  <Select
-                    value={formData.educationSystem}
-                    onValueChange={(v) =>
-                      setFormData((prev) => ({ ...prev, educationSystem: v }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {educationSystems.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>
-                          {s.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Système de notation</Label>
-                  <Select
-                    value={formData.gradingSystem}
-                    onValueChange={(v) =>
-                      setFormData((prev) => ({ ...prev, gradingSystem: v }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {gradingSystems.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>
-                          {s.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Rythme scolaire</Label>
-                  <Select
-                    value={formData.semesterSystem}
-                    onValueChange={(v) =>
-                      setFormData((prev) => ({ ...prev, semesterSystem: v }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {semesterSystems.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>
-                          {s.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 5: Review */}
-          {step === 5 && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold mb-4">
-                ✅ Récapitulatif
-              </h3>
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg bg-muted p-3">
-                    <p className="text-xs text-muted-foreground">Pays</p>
-                    <p className="text-sm font-medium">
-                      {selectedCountry?.flag} {selectedCountry?.name}
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-muted p-3">
-                    <p className="text-xs text-muted-foreground">Établissement</p>
-                    <p className="text-sm font-medium">{formData.name}</p>
-                  </div>
-                  <div className="rounded-lg bg-muted p-3">
-                    <p className="text-xs text-muted-foreground">Type</p>
-                    <p className="text-sm font-medium">
-                      {institutionTypes.find((t) => t.value === formData.type)?.label}
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-muted p-3">
-                    <p className="text-xs text-muted-foreground">Année académique</p>
-                    <p className="text-sm font-medium">{formData.academieYear}</p>
-                  </div>
-                  <div className="rounded-lg bg-muted p-3">
-                    <p className="text-xs text-muted-foreground">Jours ouvrés</p>
-                    <p className="text-sm font-medium">
-                      {formData.workingDays.join(", ")}
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-muted p-3">
-                    <p className="text-xs text-muted-foreground">Horaires</p>
-                    <p className="text-sm font-medium">
-                      {formData.dayStartTime} - {formData.dayEndTime}
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-muted p-3">
-                    <p className="text-xs text-muted-foreground">Pause déjeuner</p>
-                    <p className="text-sm font-medium">
-                      {formData.breakStartTime} - {formData.breakEndTime}
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-muted p-3">
-                    <p className="text-xs text-muted-foreground">Durée créneau</p>
-                    <p className="text-sm font-medium">
-                      {formData.slotDuration} min
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-muted p-3">
-                    <p className="text-xs text-muted-foreground">Système éducatif</p>
-                    <p className="text-sm font-medium">
-                      {educationSystems.find((s) => s.value === formData.educationSystem)?.label}
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-muted p-3">
-                    <p className="text-xs text-muted-foreground">Notation</p>
-                    <p className="text-sm font-medium">
-                      {gradingSystems.find((s) => s.value === formData.gradingSystem)?.label}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Navigation */}
-          <div className="flex justify-between mt-8">
-            <Button
-              variant="outline"
-              onClick={() => setStep(step - 1)}
-              disabled={step === 1}
-            >
-              <ChevronLeft className="h-4 w-4 mr-2" />
-              Précédent
-            </Button>
-            {step < 5 ? (
-              <Button
-                onClick={() => setStep(step + 1)}
-                disabled={step === 1 && !formData.country}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
-                Suivant
-                <ChevronRight className="h-4 w-4 ml-2" />
-              </Button>
-            ) : (
-              <Button
-                onClick={handleSubmit}
-                disabled={isLoading || !formData.name}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
-                {isLoading ? "Création en cours..." : "Créer l'établissement"}
-                <Check className="h-4 w-4 ml-2" />
-              </Button>
-            )}
           </div>
-        </CardContent>
-      </Card>
+        )}
+
+        {/* Step 4: Education System */}
+        {step === 4 && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">
+              Systeme educatif
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Systeme d&apos;enseignement</Label>
+                <Select
+                  value={formData.educationSystem}
+                  onValueChange={(v) => setFormData((prev) => ({ ...prev, educationSystem: v }))}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {educationSystems.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Systeme de notation</Label>
+                <Select
+                  value={formData.gradingSystem}
+                  onValueChange={(v) => setFormData((prev) => ({ ...prev, gradingSystem: v }))}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {gradingSystems.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Rythme scolaire</Label>
+                <Select
+                  value={formData.semesterSystem}
+                  onValueChange={(v) => setFormData((prev) => ({ ...prev, semesterSystem: v }))}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {semesterSystems.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 5: Review (Terminal style) */}
+        {step === 5 && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">
+              Recapitulatif
+            </h3>
+            <pre className="text-xs text-[#646262] dark:text-[#9A9898] bg-[#F8F7F7] dark:bg-[#1A1A1A] border border-[#E5E5E5] dark:border-[#2A2A2A] p-4 overflow-x-auto leading-relaxed">
+              {terminalPreview}
+            </pre>
+          </div>
+        )}
+
+        {/* Navigation */}
+        <div className="flex justify-between mt-8 pt-4 border-t border-[#E5E5E5] dark:border-[#2A2A2A]">
+          <Button
+            variant="ghost"
+            onClick={() => setStep(step - 1)}
+            disabled={step === 1}
+            className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+          >
+            <ChevronLeft className="h-3 w-3 mr-1" />
+            Precedent
+          </Button>
+          {step < 5 ? (
+            <Button
+              onClick={() => setStep(step + 1)}
+              disabled={step === 1 && !formData.country}
+              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+            >
+              Suivant
+              <ChevronRight className="h-3 w-3 ml-1" />
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSubmit}
+              disabled={isLoading || !formData.name}
+              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+            >
+              {isLoading ? "Creation en cours..." : "Creer l'etablissement"}
+              <Check className="h-3 w-3 ml-1" />
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -10,6 +10,11 @@ export async function GET(request: Request) {
     }
     const rooms = await db.room.findMany({
       where: { institutionId },
+      include: {
+        timetableSlots: {
+          select: { id: true },
+        },
+      },
       orderBy: { name: "asc" },
     });
     return NextResponse.json(rooms);

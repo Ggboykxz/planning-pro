@@ -9,15 +9,23 @@ export type AppSection =
   | "classes"
   | "settings";
 
+export type TimetableViewMode = "class" | "teacher" | "room";
+
 interface AppState {
   currentSection: AppSection;
   setCurrentSection: (section: AppSection) => void;
   institutionId: string | null;
   setInstitutionId: (id: string | null) => void;
+  timetableViewMode: TimetableViewMode;
+  setTimetableViewMode: (mode: TimetableViewMode) => void;
   selectedClassId: string | null;
   setSelectedClassId: (id: string | null) => void;
-  sidebarOpen: boolean;
-  setSidebarOpen: (open: boolean) => void;
+  selectedTeacherId: string | null;
+  setSelectedTeacherId: (id: string | null) => void;
+  selectedRoomId: string | null;
+  setSelectedRoomId: (id: string | null) => void;
+  mobileMenuOpen: boolean;
+  setMobileMenuOpen: (open: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -25,8 +33,14 @@ export const useAppStore = create<AppState>((set) => ({
   setCurrentSection: (section) => set({ currentSection: section }),
   institutionId: null,
   setInstitutionId: (id) => set({ institutionId: id }),
+  timetableViewMode: "class",
+  setTimetableViewMode: (mode) => set({ timetableViewMode: mode }),
   selectedClassId: null,
   setSelectedClassId: (id) => set({ selectedClassId: id }),
-  sidebarOpen: true,
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+  selectedTeacherId: null,
+  setSelectedTeacherId: (id) => set({ selectedTeacherId: id }),
+  selectedRoomId: null,
+  setSelectedRoomId: (id) => set({ selectedRoomId: id }),
+  mobileMenuOpen: false,
+  setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
 }));

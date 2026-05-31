@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -13,16 +11,10 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { GraduationCap, Plus, Pencil, Trash2, Users } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
+import { SearchInput } from "@/components/shared/SearchInput";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { toast } from "sonner";
 
 interface ClassData {
@@ -53,6 +45,8 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<ClassData | null>(null);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [form, setForm] = useState({
     name: "",
@@ -108,7 +102,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
       academicYear: cls.academicYear || "2025-2026",
       subjectIds: cls.subjects.map((s) => ({
         subjectId: s.subject.id,
-        hoursPerWeek: s.hoursPerWeek || s.subject?.name ? 3 : 3,
+        hoursPerWeek: s.hoursPerWeek || 3,
       })),
     });
     setDialogOpen(true);
@@ -137,7 +131,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        toast.success(editingClass ? "Classe mise à jour" : "Classe créée");
+        toast.success(editingClass ? "Classe mise a jour" : "Classe creee");
         setDialogOpen(false);
         loadData();
       } else {
@@ -155,9 +149,23 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
     try {
       const res = await fetch(`/api/classes?id=${id}`, { method: "DELETE" });
       if (res.ok) {
-        toast.success("Classe supprimée");
+        toast.success("Classe supprimee");
         loadData();
       }
+    } catch {
+      toast.error("Erreur lors de la suppression");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Supprimer ${selectedIds.size} classe(s) ?`)) return;
+    try {
+      for (const id of selectedIds) {
+        await fetch(`/api/classes?id=${id}`, { method: "DELETE" });
+      }
+      toast.success(`${selectedIds.size} classe(s) supprimee(s)`);
+      setSelectedIds(new Set());
+      loadData();
     } catch {
       toast.error("Erreur lors de la suppression");
     }
@@ -186,13 +194,26 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
     }));
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const filteredClasses = classes.filter((c) =>
+    `${c.name} ${c.level || ""} ${c.department || ""}`.toLowerCase().includes(search.toLowerCase())
+  );
+
   if (loading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Classes</h1>
-        <div className="animate-pulse space-y-4">
+        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Classes</h1>
+        <div className="animate-pulse space-y-2">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 bg-muted rounded" />
+            <div key={i} className="h-10 bg-[#F8F7F7] dark:bg-[#1A1A1A]" />
           ))}
         </div>
       </div>
@@ -203,164 +224,194 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Classes</h1>
-          <p className="text-muted-foreground">
-            Gérez les classes et groupes d&apos;étudiants
-          </p>
+          <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Classes</h1>
+          <p className="text-xs text-[#9A9898] mt-1">Gez les classes et groupes d&apos;etudiants</p>
         </div>
-        <Button onClick={openCreate} className="bg-emerald-600 hover:bg-emerald-700">
-          <Plus className="h-4 w-4 mr-2" />
+        <Button
+          onClick={openCreate}
+          className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+        >
+          <Plus className="h-3 w-3 mr-1" />
           Ajouter une classe
         </Button>
       </div>
 
-      {classes.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <GraduationCap className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">Aucune classe</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Ajoutez votre première classe
-            </p>
-          </CardContent>
-        </Card>
+      {/* Search & Bulk actions */}
+      <div className="flex items-center gap-3">
+        <div className="w-64">
+          <SearchInput value={search} onChange={setSearch} placeholder="Rechercher une classe..." />
+        </div>
+        {selectedIds.size > 0 && (
+          <Button variant="ghost" onClick={handleBulkDelete} className="text-xs text-[#DC2626] hover:text-[#DC2626]">
+            <Trash2 className="h-3 w-3 mr-1" />
+            Supprimer ({selectedIds.size})
+          </Button>
+        )}
+      </div>
+
+      {filteredClasses.length === 0 ? (
+        <EmptyState
+          title={search ? "Aucun resultat" : "Aucune classe"}
+          description={search ? "Essayez un autre terme de recherche" : "Ajoutez votre premiere classe"}
+          action={
+            !search ? (
+              <Button onClick={openCreate} variant="ghost" className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A]">
+                <Plus className="h-3 w-3 mr-1" /> Ajouter
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nom</TableHead>
-                    <TableHead>Niveau</TableHead>
-                    <TableHead>Département</TableHead>
-                    <TableHead>Étudiants</TableHead>
-                    <TableHead>Matières</TableHead>
-                    <TableHead>Emploi du temps</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {classes.map((cls) => (
-                    <TableRow key={cls.id}>
-                      <TableCell className="font-medium">{cls.name}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{cls.level || "—"}</Badge>
-                      </TableCell>
-                      <TableCell>{cls.department || "—"}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Users className="h-3 w-3 text-muted-foreground" />
-                          {cls.studentCount || "—"}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {cls.subjects.slice(0, 3).map((s) => (
-                            <Badge key={s.subject.id} variant="secondary" className="text-xs">
-                              {s.subject.name}
-                            </Badge>
-                          ))}
-                          {cls.subjects.length > 3 && (
-                            <Badge variant="secondary" className="text-xs">
-                              +{cls.subjects.length - 3}
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={cls.timetables.length > 0 ? "default" : "secondary"}
-                          className={cls.timetables.length > 0 ? "bg-emerald-600" : ""}
-                        >
-                          {cls.timetables.length > 0 ? "Configuré" : "Non configuré"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(cls)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(cls.id)}
-                            className="text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-[#F8F7F7] dark:bg-[#1A1A1A]">
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC] w-8">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === filteredClasses.length && filteredClasses.length > 0}
+                    onChange={() => {
+                      if (selectedIds.size === filteredClasses.length) {
+                        setSelectedIds(new Set());
+                      } else {
+                        setSelectedIds(new Set(filteredClasses.map((c) => c.id)));
+                      }
+                    }}
+                    className="h-3 w-3 accent-[#201D1D] dark:accent-[#FDFCFC]"
+                  />
+                </th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Nom</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Niveau</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Departement</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Etudiants</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Matieres</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Emploi du temps</th>
+                <th className="p-2 text-xs font-bold text-right text-[#201D1D] dark:text-[#FDFCFC]">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredClasses.map((cls) => (
+                <tr
+                  key={cls.id}
+                  className="border-t border-[#E5E5E5] dark:border-[#2A2A2A] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                >
+                  <td className="p-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(cls.id)}
+                      onChange={() => toggleSelect(cls.id)}
+                      className="h-3 w-3 accent-[#201D1D] dark:accent-[#FDFCFC]"
+                    />
+                  </td>
+                  <td className="p-2 text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">{cls.name}</td>
+                  <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">{cls.level || "—"}</td>
+                  <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">{cls.department || "—"}</td>
+                  <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">{cls.studentCount || "—"}</td>
+                  <td className="p-2">
+                    <div className="flex flex-wrap gap-1">
+                      {cls.subjects.slice(0, 3).map((s) => (
+                        <span key={s.subject.id} className="text-[10px] px-1.5 py-0.5 border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#646262] dark:text-[#9A9898]">
+                          {s.subject.name}
+                        </span>
+                      ))}
+                      {cls.subjects.length > 3 && (
+                        <span className="text-[10px] text-[#9A9898]">+{cls.subjects.length - 3}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="p-2">
+                    <span className={`text-[10px] px-1.5 py-0.5 ${
+                      cls.timetables.length > 0
+                        ? "bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] font-bold"
+                        : "border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#9A9898]"
+                    }`}>
+                      {cls.timetables.length > 0 ? "Configure" : "Non configure"}
+                    </span>
+                  </td>
+                  <td className="p-2 text-right">
+                    <div className="flex justify-end gap-1">
+                      <button
+                        onClick={() => openEdit(cls)}
+                        className="p-1.5 text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(cls.id)}
+                        className="p-1.5 text-[#646262] hover:text-[#DC2626] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-sm font-bold">
               {editingClass ? "Modifier la classe" : "Nouvelle classe"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Nom *</Label>
+                <Label className="text-xs font-bold">Nom *</Label>
                 <Input
                   value={form.name}
                   onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                   placeholder="Ex: L1 Informatique"
+                  className="mt-1"
                 />
               </div>
               <div>
-                <Label>Niveau</Label>
+                <Label className="text-xs font-bold">Niveau</Label>
                 <Input
                   value={form.level}
                   onChange={(e) => setForm((prev) => ({ ...prev, level: e.target.value }))}
                   placeholder="Ex: L1, L2, Terminale"
+                  className="mt-1"
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Département</Label>
+                <Label className="text-xs font-bold">Departement</Label>
                 <Input
                   value={form.department}
                   onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))}
                   placeholder="Ex: Informatique"
+                  className="mt-1"
                 />
               </div>
               <div>
-                <Label>Nombre d&apos;étudiants</Label>
+                <Label className="text-xs font-bold">Nombre d&apos;etudiants</Label>
                 <Input
                   type="number"
                   value={form.studentCount}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, studentCount: parseInt(e.target.value) || 0 }))
-                  }
+                  onChange={(e) => setForm((prev) => ({ ...prev, studentCount: parseInt(e.target.value) || 0 }))}
+                  className="mt-1"
                 />
               </div>
             </div>
             <div>
-              <Label>Année académique</Label>
+              <Label className="text-xs font-bold">Annee academique</Label>
               <Input
                 value={form.academicYear}
                 onChange={(e) => setForm((prev) => ({ ...prev, academicYear: e.target.value }))}
                 placeholder="2025-2026"
+                className="mt-1"
               />
             </div>
             <div>
-              <Label className="flex items-center gap-2 mb-2">
-                <GraduationCap className="h-4 w-4" />
-                Matières associées
-              </Label>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
+              <Label className="text-xs font-bold mb-2 block">Matieres associees</Label>
+              <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin">
                 {subjects.map((subject) => {
                   const isSelected = form.subjectIds.some((s) => s.subjectId === subject.id);
                   const entry = form.subjectIds.find((s) => s.subjectId === subject.id);
@@ -370,34 +421,32 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
                         checked={isSelected}
                         onCheckedChange={() => toggleSubject(subject.id)}
                       />
-                      <span className="text-sm flex-1">{subject.name}</span>
+                      <span className="text-xs flex-1 text-[#201D1D] dark:text-[#FDFCFC]">{subject.name}</span>
                       {isSelected && (
                         <Input
                           type="number"
                           className="w-20 h-7 text-xs"
                           value={entry?.hoursPerWeek || 3}
-                          onChange={(e) =>
-                            updateSubjectHours(subject.id, parseInt(e.target.value) || 3)
-                          }
+                          onChange={(e) => updateSubjectHours(subject.id, parseInt(e.target.value) || 3)}
                         />
                       )}
                     </div>
                   );
                 })}
                 {subjects.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    Créez d&apos;abord des matières
-                  </p>
+                  <p className="text-xs text-[#9A9898]">Creez d&apos;abord des matieres</p>
                 )}
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Annuler
-            </Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700">
-              {saving ? "Enregistrement..." : editingClass ? "Mettre à jour" : "Créer"}
+            <Button variant="ghost" onClick={() => setDialogOpen(false)} className="text-xs">Annuler</Button>
+            <Button
+              onClick={handleSave}
+              disabled={saving}
+              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+            >
+              {saving ? "Enregistrement..." : editingClass ? "Mettre a jour" : "Creer"}
             </Button>
           </DialogFooter>
         </DialogContent>

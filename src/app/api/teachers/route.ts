@@ -14,6 +14,9 @@ export async function GET(request: Request) {
         subjectAssignments: {
           include: { subject: true },
         },
+        timetableSlots: {
+          select: { id: true },
+        },
       },
       orderBy: { lastName: "asc" },
     });

@@ -6,7 +6,10 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const institutionId = searchParams.get("institutionId");
     const classId = searchParams.get("classId");
+    const teacherId = searchParams.get("teacherId");
+    const roomId = searchParams.get("roomId");
 
+    // Get timetable by class
     if (classId) {
       const timetable = await db.timetable.findFirst({
         where: { classId, isActive: true },
@@ -25,8 +28,93 @@ export async function GET(request: Request) {
       return NextResponse.json(timetable);
     }
 
+    // Get timetable by teacher - gather all slots for this teacher across all timetables
+    if (teacherId) {
+      const teacher = await db.teacher.findUnique({
+        where: { id: teacherId },
+        select: { firstName: true, lastName: true },
+      });
+
+      if (!teacher) {
+        return NextResponse.json({ error: "Enseignant non trouve" }, { status: 404 });
+      }
+
+      const slots = await db.timetableSlot.findMany({
+        where: { teacherId },
+        include: {
+          subject: true,
+          teacher: true,
+          room: true,
+          timetable: {
+            include: { class: true },
+          },
+        },
+        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+      });
+
+      // Format as a timetable-like structure
+      const timetable = {
+        id: `teacher-${teacherId}`,
+        name: `Emploi du temps - ${teacher.firstName} ${teacher.lastName}`,
+        class: { id: teacherId, name: `${teacher.firstName} ${teacher.lastName}` },
+        slots: slots.map((s) => ({
+          id: s.id,
+          dayOfWeek: s.dayOfWeek,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          subject: s.subject,
+          teacher: s.teacher,
+          room: s.room,
+          className: s.timetable?.class?.name || "",
+        })),
+      };
+      return NextResponse.json(timetable);
+    }
+
+    // Get timetable by room - gather all slots for this room across all timetables
+    if (roomId) {
+      const room = await db.room.findUnique({
+        where: { id: roomId },
+        select: { name: true },
+      });
+
+      if (!room) {
+        return NextResponse.json({ error: "Salle non trouvee" }, { status: 404 });
+      }
+
+      const slots = await db.timetableSlot.findMany({
+        where: { roomId },
+        include: {
+          subject: true,
+          teacher: true,
+          room: true,
+          timetable: {
+            include: { class: true },
+          },
+        },
+        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+      });
+
+      const timetable = {
+        id: `room-${roomId}`,
+        name: `Emploi du temps - ${room.name}`,
+        class: { id: roomId, name: room.name },
+        slots: slots.map((s) => ({
+          id: s.id,
+          dayOfWeek: s.dayOfWeek,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          subject: s.subject,
+          teacher: s.teacher,
+          room: s.room,
+          className: s.timetable?.class?.name || "",
+        })),
+      };
+      return NextResponse.json(timetable);
+    }
+
     if (!institutionId) {
-      return NextResponse.json({ error: "institutionId ou classId requis" }, { status: 400 });
+      return NextResponse.json({ error: "institutionId, classId, teacherId ou roomId requis" }, { status: 400 });
     }
 
     const timetables = await db.timetable.findMany({
@@ -107,7 +195,6 @@ export async function PUT(request: Request) {
 
     // Update slots if provided
     if (slots && Array.isArray(slots)) {
-      // Delete existing slots and recreate
       await db.timetableSlot.deleteMany({ where: { timetableId: id } });
       for (const slot of slots) {
         await db.timetableSlot.create({

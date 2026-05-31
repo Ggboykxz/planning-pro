@@ -1,22 +1,18 @@
 "use client";
 
-import { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 interface EmptyStateProps {
-  icon: ReactNode;
   title: string;
   description: string;
-  action?: ReactNode;
+  action?: React.ReactNode;
 }
 
-export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
+export function EmptyState({ title, description, action }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16">
-      <div className="text-muted-foreground mb-4">{icon}</div>
-      <h3 className="text-lg font-medium">{title}</h3>
-      <p className="text-sm text-muted-foreground mt-1 text-center max-w-sm">
-        {description}
-      </p>
+    <div className="flex flex-col items-center justify-center py-16 border border-[#E5E5E5] dark:border-[#2A2A2A]">
+      <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC]">{title}</h3>
+      <p className="text-xs text-[#9A9898] mt-1 text-center max-w-sm">{description}</p>
       {action && <div className="mt-4">{action}</div>}
     </div>
   );

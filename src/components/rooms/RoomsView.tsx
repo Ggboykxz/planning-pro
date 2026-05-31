@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -14,22 +12,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DoorOpen, Plus, Pencil, Trash2, Building2 } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { roomTypes } from "@/lib/countries";
+import { SearchInput } from "@/components/shared/SearchInput";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { toast } from "sonner";
 
 interface RoomData {
@@ -52,6 +44,8 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<RoomData | null>(null);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [form, setForm] = useState({
     name: "",
@@ -115,7 +109,7 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        toast.success(editingRoom ? "Salle mise à jour" : "Salle créée");
+        toast.success(editingRoom ? "Salle mise a jour" : "Salle creee");
         setDialogOpen(false);
         loadRooms();
       } else {
@@ -133,9 +127,23 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
     try {
       const res = await fetch(`/api/rooms?id=${id}`, { method: "DELETE" });
       if (res.ok) {
-        toast.success("Salle supprimée");
+        toast.success("Salle supprimee");
         loadRooms();
       }
+    } catch {
+      toast.error("Erreur lors de la suppression");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Supprimer ${selectedIds.size} salle(s) ?`)) return;
+    try {
+      for (const id of selectedIds) {
+        await fetch(`/api/rooms?id=${id}`, { method: "DELETE" });
+      }
+      toast.success(`${selectedIds.size} salle(s) supprimee(s)`);
+      setSelectedIds(new Set());
+      loadRooms();
     } catch {
       toast.error("Erreur lors de la suppression");
     }
@@ -145,13 +153,26 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
     return roomTypes.find((rt) => rt.value === type)?.label || type || "—";
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const filteredRooms = rooms.filter((r) =>
+    `${r.name} ${r.building || ""} ${getRoomTypeLabel(r.type)}`.toLowerCase().includes(search.toLowerCase())
+  );
+
   if (loading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Salles</h1>
-        <div className="animate-pulse space-y-4">
+        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Salles</h1>
+        <div className="animate-pulse space-y-2">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 bg-muted rounded" />
+            <div key={i} className="h-10 bg-[#F8F7F7] dark:bg-[#1A1A1A]" />
           ))}
         </div>
       </div>
@@ -162,159 +183,188 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Salles</h1>
-          <p className="text-muted-foreground">
-            Gérez les salles et amphithéâtres
-          </p>
+          <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Salles</h1>
+          <p className="text-xs text-[#9A9898] mt-1">Gez les salles et amphitheatres</p>
         </div>
-        <Button onClick={openCreate} className="bg-emerald-600 hover:bg-emerald-700">
-          <Plus className="h-4 w-4 mr-2" />
+        <Button
+          onClick={openCreate}
+          className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+        >
+          <Plus className="h-3 w-3 mr-1" />
           Ajouter une salle
         </Button>
       </div>
 
-      {rooms.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <DoorOpen className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">Aucune salle</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Ajoutez votre première salle
-            </p>
-          </CardContent>
-        </Card>
+      {/* Search & Bulk actions */}
+      <div className="flex items-center gap-3">
+        <div className="w-64">
+          <SearchInput value={search} onChange={setSearch} placeholder="Rechercher une salle..." />
+        </div>
+        {selectedIds.size > 0 && (
+          <Button variant="ghost" onClick={handleBulkDelete} className="text-xs text-[#DC2626] hover:text-[#DC2626]">
+            <Trash2 className="h-3 w-3 mr-1" />
+            Supprimer ({selectedIds.size})
+          </Button>
+        )}
+      </div>
+
+      {filteredRooms.length === 0 ? (
+        <EmptyState
+          title={search ? "Aucun resultat" : "Aucune salle"}
+          description={search ? "Essayez un autre terme de recherche" : "Ajoutez votre premiere salle"}
+          action={
+            !search ? (
+              <Button onClick={openCreate} variant="ghost" className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A]">
+                <Plus className="h-3 w-3 mr-1" /> Ajouter
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nom</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Capacité</TableHead>
-                    <TableHead>Bâtiment</TableHead>
-                    <TableHead>Étage</TableHead>
-                    <TableHead>Utilisation</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rooms.map((room) => {
-                    const usedSlots = room.timetableSlots.length;
-                    return (
-                      <TableRow key={room.id}>
-                        <TableCell className="font-medium">{room.name}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{getRoomTypeLabel(room.type)}</Badge>
-                        </TableCell>
-                        <TableCell>{room.capacity || "—"}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Building2 className="h-3 w-3 text-muted-foreground" />
-                            {room.building || "—"}
-                          </div>
-                        </TableCell>
-                        <TableCell>{room.floor || "—"}</TableCell>
-                        <TableCell>
-                          <Badge variant={usedSlots > 0 ? "default" : "secondary"} className={usedSlots > 0 ? "bg-emerald-600" : ""}>
-                            {usedSlots} créneau{usedSlots !== 1 ? "x" : ""}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => openEdit(room)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDelete(room.id)}
-                              className="text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-[#F8F7F7] dark:bg-[#1A1A1A]">
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC] w-8">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === filteredRooms.length && filteredRooms.length > 0}
+                    onChange={() => {
+                      if (selectedIds.size === filteredRooms.length) {
+                        setSelectedIds(new Set());
+                      } else {
+                        setSelectedIds(new Set(filteredRooms.map((r) => r.id)));
+                      }
+                    }}
+                    className="h-3 w-3 accent-[#201D1D] dark:accent-[#FDFCFC]"
+                  />
+                </th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Nom</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Type</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Capacite</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Batiment</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Etage</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Utilisation</th>
+                <th className="p-2 text-xs font-bold text-right text-[#201D1D] dark:text-[#FDFCFC]">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRooms.map((room) => {
+                const usedSlots = room.timetableSlots.length;
+                return (
+                  <tr
+                    key={room.id}
+                    className="border-t border-[#E5E5E5] dark:border-[#2A2A2A] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                  >
+                    <td className="p-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(room.id)}
+                        onChange={() => toggleSelect(room.id)}
+                        className="h-3 w-3 accent-[#201D1D] dark:accent-[#FDFCFC]"
+                      />
+                    </td>
+                    <td className="p-2 text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">{room.name}</td>
+                    <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">{getRoomTypeLabel(room.type)}</td>
+                    <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">{room.capacity || "—"}</td>
+                    <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">{room.building || "—"}</td>
+                    <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">{room.floor || "—"}</td>
+                    <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">
+                      {usedSlots} creneau{usedSlots !== 1 ? "x" : ""}
+                    </td>
+                    <td className="p-2 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => openEdit(room)}
+                          className="p-1.5 text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(room.id)}
+                          className="p-1.5 text-[#646262] hover:text-[#DC2626] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-sm font-bold">
               {editingRoom ? "Modifier la salle" : "Nouvelle salle"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>Nom *</Label>
+              <Label className="text-xs font-bold">Nom *</Label>
               <Input
                 value={form.name}
                 onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder="Ex: Amphi 500, Salle B12"
+                className="mt-1"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Type</Label>
+                <Label className="text-xs font-bold">Type</Label>
                 <Select value={form.type} onValueChange={(v) => setForm((prev) => ({ ...prev, type: v }))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {roomTypes.map((rt) => (
-                      <SelectItem key={rt.value} value={rt.value}>
-                        {rt.label}
-                      </SelectItem>
+                      <SelectItem key={rt.value} value={rt.value}>{rt.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label>Capacité</Label>
+                <Label className="text-xs font-bold">Capacite</Label>
                 <Input
                   type="number"
                   value={form.capacity}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, capacity: parseInt(e.target.value) || 0 }))
-                  }
+                  onChange={(e) => setForm((prev) => ({ ...prev, capacity: parseInt(e.target.value) || 0 }))}
+                  className="mt-1"
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Bâtiment</Label>
+                <Label className="text-xs font-bold">Batiment</Label>
                 <Input
                   value={form.building}
                   onChange={(e) => setForm((prev) => ({ ...prev, building: e.target.value }))}
-                  placeholder="Ex: Bâtiment A"
+                  placeholder="Ex: Batiment A"
+                  className="mt-1"
                 />
               </div>
               <div>
-                <Label>Étage</Label>
+                <Label className="text-xs font-bold">Etage</Label>
                 <Input
                   value={form.floor}
                   onChange={(e) => setForm((prev) => ({ ...prev, floor: e.target.value }))}
                   placeholder="Ex: RDC, 1er"
+                  className="mt-1"
                 />
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Annuler
-            </Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700">
-              {saving ? "Enregistrement..." : editingRoom ? "Mettre à jour" : "Créer"}
+            <Button variant="ghost" onClick={() => setDialogOpen(false)} className="text-xs">Annuler</Button>
+            <Button
+              onClick={handleSave}
+              disabled={saving}
+              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+            >
+              {saving ? "Enregistrement..." : editingRoom ? "Mettre a jour" : "Creer"}
             </Button>
           </DialogFooter>
         </DialogContent>

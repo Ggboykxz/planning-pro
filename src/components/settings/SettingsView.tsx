@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Settings, Save, Trash2, AlertTriangle } from "lucide-react";
+import { Save, Trash2, AlertTriangle } from "lucide-react";
 import { countries, institutionTypes, educationSystems, gradingSystems, semesterSystems } from "@/lib/countries";
 import { toast } from "sonner";
 import {
@@ -141,7 +140,7 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
         body: JSON.stringify({ id: institutionId, ...form }),
       });
       if (res.ok) {
-        toast.success("Paramètres sauvegardés");
+        toast.success("Parametres sauvegardes");
         onUpdate();
       } else {
         toast.error("Erreur lors de la sauvegarde");
@@ -156,10 +155,10 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
   const handleReset = async () => {
     try {
       await fetch(`/api/institution?id=${institutionId}`, { method: "DELETE" });
-      toast.success("Données réinitialisées");
+      toast.success("Donnees reinitialisees");
       onUpdate();
     } catch {
-      toast.error("Erreur lors de la réinitialisation");
+      toast.error("Erreur lors de la reinitialisation");
     }
   };
 
@@ -197,118 +196,125 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
   if (loading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Paramètres</h1>
+        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Parametres</h1>
         <div className="animate-pulse space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 bg-muted rounded" />
+            <div key={i} className="h-32 bg-[#F8F7F7] dark:bg-[#1A1A1A]" />
           ))}
         </div>
       </div>
     );
   }
 
+  // Config preview
+  const configPreview = `
+pays:           "${form.country}"
+etablissement:  "${form.name}"
+type:           "${institutionTypes.find(t => t.value === form.type)?.label || form.type}"
+horaires:       "${form.dayStartTime} — ${form.dayEndTime}"
+pause:          "${form.breakStartTime} — ${form.breakEndTime}"
+jours:          [${form.workingDays.map(d => `"${d}"`).join(", ")}]
+systeme:        "${educationSystems.find(s => s.value === form.educationSystem)?.label || form.educationSystem}"
+notation:       "/${form.gradingSystem}"
+rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.label || form.semesterSystem}"`;
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Paramètres</h1>
-        <p className="text-muted-foreground">
-          Configuration de votre établissement
-        </p>
+        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Parametres</h1>
+        <p className="text-xs text-[#9A9898] mt-1">Configuration de votre etablissement</p>
+      </div>
+
+      {/* Config preview */}
+      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A]">
+        <div className="p-3 bg-[#F8F7F7] dark:bg-[#1A1A1A] border-b border-[#E5E5E5] dark:border-[#2A2A2A]">
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Apercu de la configuration</p>
+        </div>
+        <pre className="p-4 text-xs text-[#646262] dark:text-[#9A9898] overflow-x-auto leading-relaxed">
+          {configPreview}
+        </pre>
       </div>
 
       {/* Institution Info */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            Informations générales
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label>Nom de l&apos;établissement</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Type</Label>
-              <Select value={form.type} onValueChange={(v) => setForm((prev) => ({ ...prev, type: v }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {institutionTypes.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Pays</Label>
-              <Select value={form.country} onValueChange={handleCountryChange}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {countries.map((c) => (
-                    <SelectItem key={c.code} value={c.code}>
-                      {c.flag} {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Fuseau horaire</Label>
-              <Input value={form.timezone} disabled className="bg-muted" />
-            </div>
-            <div>
-              <Label>Année académique</Label>
-              <Input
-                value={form.academieYear}
-                onChange={(e) => setForm((prev) => ({ ...prev, academieYear: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Téléphone</Label>
-              <Input
-                value={form.phone}
-                onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Adresse</Label>
-              <Input
-                value={form.address}
-                onChange={(e) => setForm((prev) => ({ ...prev, address: e.target.value }))}
-              />
-            </div>
+      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Informations generales</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <Label className="text-xs font-bold">Nom de l&apos;etablissement</Label>
+            <Input
+              value={form.name}
+              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+              className="mt-1"
+            />
           </div>
-        </CardContent>
-      </Card>
+          <div>
+            <Label className="text-xs font-bold">Type</Label>
+            <Select value={form.type} onValueChange={(v) => setForm((prev) => ({ ...prev, type: v }))}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {institutionTypes.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Pays</Label>
+            <Select value={form.country} onValueChange={handleCountryChange}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {countries.map((c) => (
+                  <SelectItem key={c.code} value={c.code}>{c.flag} {c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Fuseau horaire</Label>
+            <Input value={form.timezone} disabled className="mt-1 bg-[#F8F7F7] dark:bg-[#1A1A1A]" />
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Annee academique</Label>
+            <Input
+              value={form.academieYear}
+              onChange={(e) => setForm((prev) => ({ ...prev, academieYear: e.target.value }))}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Email</Label>
+            <Input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Telephone</Label>
+            <Input
+              value={form.phone}
+              onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Adresse</Label>
+            <Input
+              value={form.address}
+              onChange={(e) => setForm((prev) => ({ ...prev, address: e.target.value }))}
+              className="mt-1"
+            />
+          </div>
+        </div>
+      </div>
 
       {/* Schedule Config */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Configuration des horaires</CardTitle>
-          <CardDescription>Définissez les créneaux horaires de votre établissement</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Configuration des horaires</p>
+        <div className="space-y-4">
           <div>
-            <Label>Jours ouvrés</Label>
+            <Label className="text-xs font-bold">Jours ouvres</Label>
             <div className="flex flex-wrap gap-2 mt-2">
               {allDays.map((day) => (
                 <label key={day} className="flex items-center gap-2 cursor-pointer">
@@ -316,37 +322,37 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
                     checked={form.workingDays.includes(day)}
                     onCheckedChange={() => handleDayToggle(day)}
                   />
-                  <span className="text-sm">{day}</span>
+                  <span className="text-xs text-[#646262]">{day}</span>
                 </label>
               ))}
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <div>
-              <Label>Début de journée</Label>
+              <Label className="text-xs font-bold">Debut de journee</Label>
               <Input
                 type="time"
                 value={form.dayStartTime}
                 onChange={(e) => setForm((prev) => ({ ...prev, dayStartTime: e.target.value }))}
+                className="mt-1"
               />
             </div>
             <div>
-              <Label>Fin de journée</Label>
+              <Label className="text-xs font-bold">Fin de journee</Label>
               <Input
                 type="time"
                 value={form.dayEndTime}
                 onChange={(e) => setForm((prev) => ({ ...prev, dayEndTime: e.target.value }))}
+                className="mt-1"
               />
             </div>
             <div>
-              <Label>Durée créneau (min)</Label>
+              <Label className="text-xs font-bold">Duree creneau (min)</Label>
               <Select
                 value={String(form.slotDuration)}
                 onValueChange={(v) => setForm((prev) => ({ ...prev, slotDuration: parseInt(v) }))}
               >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="45">45 min</SelectItem>
                   <SelectItem value="60">1 heure</SelectItem>
@@ -356,123 +362,113 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
               </Select>
             </div>
             <div>
-              <Label>Début de pause</Label>
+              <Label className="text-xs font-bold">Debut de pause</Label>
               <Input
                 type="time"
                 value={form.breakStartTime}
                 onChange={(e) => setForm((prev) => ({ ...prev, breakStartTime: e.target.value }))}
+                className="mt-1"
               />
             </div>
             <div>
-              <Label>Fin de pause</Label>
+              <Label className="text-xs font-bold">Fin de pause</Label>
               <Input
                 type="time"
                 value={form.breakEndTime}
                 onChange={(e) => setForm((prev) => ({ ...prev, breakEndTime: e.target.value }))}
+                className="mt-1"
               />
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Education System */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Système éducatif</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <Label>Système d&apos;enseignement</Label>
-              <Select
-                value={form.educationSystem}
-                onValueChange={(v) => setForm((prev) => ({ ...prev, educationSystem: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {educationSystems.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Système de notation</Label>
-              <Select
-                value={form.gradingSystem}
-                onValueChange={(v) => setForm((prev) => ({ ...prev, gradingSystem: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {gradingSystems.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Rythme scolaire</Label>
-              <Select
-                value={form.semesterSystem}
-                onValueChange={(v) => setForm((prev) => ({ ...prev, semesterSystem: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {semesterSystems.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Systeme educatif</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <Label className="text-xs font-bold">Systeme d&apos;enseignement</Label>
+            <Select
+              value={form.educationSystem}
+              onValueChange={(v) => setForm((prev) => ({ ...prev, educationSystem: v }))}
+            >
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {educationSystems.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        </CardContent>
-      </Card>
+          <div>
+            <Label className="text-xs font-bold">Systeme de notation</Label>
+            <Select
+              value={form.gradingSystem}
+              onValueChange={(v) => setForm((prev) => ({ ...prev, gradingSystem: v }))}
+            >
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {gradingSystems.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Rythme scolaire</Label>
+            <Select
+              value={form.semesterSystem}
+              onValueChange={(v) => setForm((prev) => ({ ...prev, semesterSystem: v }))}
+            >
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {semesterSystems.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
 
       {/* Actions */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-[#E5E5E5] dark:border-[#2A2A2A]">
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="destructive" className="gap-2">
-              <Trash2 className="h-4 w-4" />
-              Réinitialiser toutes les données
+            <Button variant="ghost" className="text-xs text-[#DC2626] hover:text-[#DC2626] gap-1">
+              <Trash2 className="h-3 w-3" />
+              Reinitialiser toutes les donnees
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
-                Confirmer la réinitialisation
+              <AlertDialogTitle className="text-sm font-bold flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-[#DC2626]" />
+                Confirmer la reinitialisation
               </AlertDialogTitle>
-              <AlertDialogDescription>
-                Cette action supprimera toutes les données de votre établissement
-                (enseignants, salles, matières, classes, emplois du temps). Cette
-                action est irréversible.
+              <AlertDialogDescription className="text-xs">
+                Cette action supprimera toutes les donnees de votre etablissement
+                (enseignants, salles, matieres, classes, emplois du temps). Cette
+                action est irreversible.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Annuler</AlertDialogCancel>
-              <AlertDialogAction onClick={handleReset} className="bg-destructive text-destructive-foreground">
+              <AlertDialogCancel className="text-xs">Annuler</AlertDialogCancel>
+              <AlertDialogAction onClick={handleReset} className="text-xs bg-[#DC2626] text-white border-0">
                 Supprimer tout
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
 
-        <Button onClick={handleSave} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 gap-2">
-          <Save className="h-4 w-4" />
-          {saving ? "Sauvegarde..." : "Sauvegarder les paramètres"}
+        <Button
+          onClick={handleSave}
+          disabled={saving}
+          className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0 gap-1"
+        >
+          <Save className="h-3 w-3" />
+          {saving ? "Sauvegarde..." : "Sauvegarder les parametres"}
         </Button>
       </div>
     </div>
