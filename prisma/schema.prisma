@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Institution {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // "universite", "lycee", "college", "ecole_primaire", "autre"
+  country     String   // ISO code like "FR", "SN", "CI", "CM", "US", etc.
+  timezone    String   // "Europe/Paris", "Africa/Dakar", etc.
+  academieYear String  // "2025-2026"
+  logo        String?
+  address     String?
+  phone       String?
+  email       String?
+  
+  // Schedule configuration
+  workingDays       String  // JSON array like "["Lundi","Mardi","Mercredi","Jeudi","Vendredi"]"
+  slotDuration      Int     // Duration in minutes (e.g., 60, 90)
+  dayStartTime      String  // "08:00"
+  dayEndTime        String  // "18:00"
+  breakStartTime    String? // "12:00"
+  breakEndTime      String? // "14:00"
+  lunchDuration     Int?    // minutes
+  
+  // Environment factors
+  educationSystem   String? // "LMD", "classique", "anglo-saxon", etc.
+  gradingSystem     String? // "20", "100", "A-F", etc.
+  semesterSystem    String? // "semestriel", "trimestriel", "annuel"
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  teachers  Teacher[]
+  rooms     Room[]
+  subjects  Subject[]
+  classes   Class[]
+  timetables Timetable[]
+  timeSlots TimeSlot[]
+  teacherSubjects TeacherSubject[]
+  classSubjects ClassSubject[]
+}
+
+model Teacher {
+  id             String   @id @default(cuid())
+  institutionId  String
+  firstName      String
+  lastName       String
+  email          String?
+  phone          String?
+  specialization String?
+  maxHoursPerWeek Int?    // Max teaching hours per week
+  unavailableSlots String? // JSON: days/times when unavailable
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  subjectAssignments TeacherSubject[]
+  timetableSlots TimetableSlot[]
+}
+
+model Room {
+  id            String   @id @default(cuid())
+  institutionId String
+  name          String
+  capacity      Int?
+  type          String?  // "amphi", "salle_td", "labo", "salle_info", "salle_normale"
+  building      String?
+  floor         String?
+  equipment     String?  // JSON: list of equipment
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  timetableSlots TimetableSlot[]
+}
+
+model Subject {
+  id            String   @id @default(cuid())
+  institutionId String
+  name          String
+  code          String?
+  hoursPerWeek  Float?   // Hours per week required
+  type          String?  // "cours", "td", "tp", "projet"
+  semester      String?  // "S1", "S2", etc.
+  coefficient   Float?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  teacherAssignments TeacherSubject[]
+  classSubjects ClassSubject[]
+  timetableSlots TimetableSlot[]
+}
+
+model Class {
+  id            String   @id @default(cuid())
+  institutionId String
+  name          String   // "L1 Informatique", "Terminale S", etc.
+  level         String?  // "L1", "L2", "L3", "6eme", etc.
+  department    String?
+  studentCount  Int?
+  academicYear  String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  subjects ClassSubject[]
+  timetables Timetable[]
+}
+
+model TeacherSubject {
+  id            String   @id @default(cuid())
+  teacherId     String
+  subjectId     String
+  institutionId String
+  
+  teacher       Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject       Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ClassSubject {
+  id            String   @id @default(cuid())
+  classId       String
+  subjectId     String
+  institutionId String
+  hoursPerWeek  Float?
+  
+  class         Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject       Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TimeSlot {
+  id            String   @id @default(cuid())
+  institutionId String
+  dayOfWeek     Int      // 1=Lundi, 2=Mardi, etc.
+  startTime     String   // "08:00"
+  endTime       String   // "09:30"
+  label         String?  // "Créneau 1", "Matinée", etc.
+  isBreak       Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  timetableSlots TimetableSlot[]
+}
+
+model Timetable {
+  id            String   @id @default(cuid())
+  institutionId String
+  classId       String
+  name          String   // "Emploi du temps L1 Info - Semaine 1"
+  semester      String?
+  academicYear  String?
+  isActive      Boolean  @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  class      Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  slots      TimetableSlot[]
+}
+
+model TimetableSlot {
+  id           String   @id @default(cuid())
+  timetableId  String
+  timeSlotId   String?
+  subjectId    String?
+  teacherId    String?
+  roomId       String?
+  dayOfWeek    Int
+  startTime    String
+  endTime      String
+  
+  timetable    Timetable @relation(fields: [timetableId], references: [id], onDelete: Cascade)
+  timeSlot     TimeSlot?  @relation(fields: [timeSlotId], references: [id], onDelete: SetNull)
+  subject      Subject?  @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  teacher      Teacher?  @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  room         Room?     @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AppConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
