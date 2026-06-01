@@ -239,6 +239,7 @@ export interface GenerationInput {
     startTime: string;
     endTime: string;
   }>;
+  classStudentCount?: number;
 }
 
 export interface GeneratedSlot {
@@ -304,6 +305,12 @@ export function generateTimetable(input: GenerationInput): GeneratedSlot[] {
 
     if (allRooms.length === 0) continue;
 
+    // Filter rooms by capacity if classStudentCount is provided
+    const capacityFilteredRooms = input.classStudentCount
+      ? allRooms.filter((r) => !r.capacity || r.capacity >= input.classStudentCount!)
+      : allRooms;
+    const finalRooms = capacityFilteredRooms.length > 0 ? capacityFilteredRooms : allRooms;
+
     // Get days sorted by least assignments for this subject (distribute evenly)
     const days = Array.from(slotsByDay.keys()).sort((a, b) => {
       const aCount = subjectDayCount.get(subject.id)?.get(a) || 0;
@@ -352,7 +359,7 @@ export function generateTimetable(input: GenerationInput): GeneratedSlot[] {
 
         // Find an available room
         let assignedRoom = null;
-        for (const room of allRooms) {
+        for (const room of finalRooms) {
           const roomKey = `room-${room.id}-${slot.dayOfWeek}-${slot.startTime}`;
           if (!occupiedSlots.has(roomKey)) {
             assignedRoom = room;
@@ -398,4 +405,213 @@ export function generateTimetable(input: GenerationInput): GeneratedSlot[] {
   }
 
   return result;
+}
+
+// Scoring function for timetable quality
+function computeScore(
+  slots: GeneratedSlot[],
+  input: GenerationInput
+): number {
+  let score = 0;
+
+  // Group slots by subject
+  const subjectSlots = new Map<string, GeneratedSlot[]>();
+  for (const slot of slots) {
+    if (!subjectSlots.has(slot.subjectId)) subjectSlots.set(slot.subjectId, []);
+    subjectSlots.get(slot.subjectId)!.push(slot);
+  }
+
+  // Penalize consecutive slots for the same subject on the same day
+  for (const [, sSlots] of subjectSlots) {
+    const byDay = new Map<number, GeneratedSlot[]>();
+    for (const s of sSlots) {
+      if (!byDay.has(s.dayOfWeek)) byDay.set(s.dayOfWeek, []);
+      byDay.get(s.dayOfWeek)!.push(s);
+    }
+    for (const [, daySlots] of byDay) {
+      daySlots.sort((a, b) => a.startTime.localeCompare(b.startTime));
+      for (let i = 0; i < daySlots.length - 1; i++) {
+        const currentEnd = parseTime(daySlots[i].endTime);
+        const nextStart = parseTime(daySlots[i + 1].startTime);
+        if (nextStart - currentEnd <= 10) {
+          score -= 50; // Consecutive penalty
+        }
+      }
+    }
+  }
+
+  // Prefer morning slots for heavy subjects (cours magistral)
+  for (const slot of slots) {
+    const subject = input.subjects.find((s) => s.id === slot.subjectId);
+    if (subject && subject.type === "cours") {
+      const hour = parseInt(slot.startTime.split(":")[0]);
+      if (hour < 12) {
+        score += 10; // Morning bonus
+      } else {
+        score -= 5; // Afternoon penalty
+      }
+    }
+  }
+
+  // Respect room capacity
+  for (const slot of slots) {
+    const room = input.rooms.find((r) => r.id === slot.roomId);
+    if (room && room.capacity && input.classStudentCount && room.capacity < input.classStudentCount) {
+      score -= 100; // Room too small penalty
+    }
+  }
+
+  // Minimize gaps in teacher schedules
+  const teacherSlots = new Map<string, GeneratedSlot[]>();
+  for (const slot of slots) {
+    if (!teacherSlots.has(slot.teacherId)) teacherSlots.set(slot.teacherId, []);
+    teacherSlots.get(slot.teacherId)!.push(slot);
+  }
+  for (const [, tSlots] of teacherSlots) {
+    const byDay = new Map<number, GeneratedSlot[]>();
+    for (const s of tSlots) {
+      if (!byDay.has(s.dayOfWeek)) byDay.set(s.dayOfWeek, []);
+      byDay.get(s.dayOfWeek)!.push(s);
+    }
+    for (const [, daySlots] of byDay) {
+      if (daySlots.length <= 1) continue;
+      daySlots.sort((a, b) => a.startTime.localeCompare(b.startTime));
+      for (let i = 0; i < daySlots.length - 1; i++) {
+        const currentEnd = parseTime(daySlots[i].endTime);
+        const nextStart = parseTime(daySlots[i + 1].startTime);
+        const gap = nextStart - currentEnd;
+        if (gap > 90) {
+          score -= Math.floor(gap / 30) * 5; // Gap penalty
+        }
+      }
+    }
+  }
+
+  return score;
+}
+
+// Advanced timetable generation with simulated annealing
+export interface AdvancedGenerationResult {
+  slots: GeneratedSlot[];
+  score: number;
+  unassignedSubjects: string[];
+}
+
+export function generateTimetableAdvanced(
+  input: GenerationInput
+): AdvancedGenerationResult {
+  // First, run basic generation
+  const initialSlots = generateTimetable(input);
+
+  if (initialSlots.length === 0) {
+    const unassignedSubjects = input.subjects
+      .filter((s) => !initialSlots.some((sl) => sl.subjectId === s.id))
+      .map((s) => s.name);
+    return { slots: [], score: -1000, unassignedSubjects };
+  }
+
+  let bestSlots = [...initialSlots];
+  let bestScore = computeScore(bestSlots, input);
+  let currentSlots = [...initialSlots];
+  let currentScore = bestScore;
+
+  const nonBreakSlots = input.availableSlots.filter((s) => !s.isBreak);
+
+  // Simulated annealing parameters
+  const maxIterations = 1000;
+  let temperature = 1.0;
+  const coolingRate = 0.995;
+
+  for (let iter = 0; iter < maxIterations; iter++) {
+    temperature *= coolingRate;
+
+    // Random swap: pick two slots and try swapping their time slots
+    if (currentSlots.length < 2) break;
+
+    const idx1 = Math.floor(Math.random() * currentSlots.length);
+    let idx2 = Math.floor(Math.random() * currentSlots.length);
+    if (idx2 === idx1) idx2 = (idx1 + 1) % currentSlots.length;
+
+    // Create a candidate by swapping dayOfWeek, startTime, endTime
+    const candidateSlots = currentSlots.map((s, i) => {
+      if (i === idx1) {
+        return {
+          ...s,
+          dayOfWeek: currentSlots[idx2].dayOfWeek,
+          startTime: currentSlots[idx2].startTime,
+          endTime: currentSlots[idx2].endTime,
+        };
+      }
+      if (i === idx2) {
+        return {
+          ...s,
+          dayOfWeek: currentSlots[idx1].dayOfWeek,
+          startTime: currentSlots[idx1].startTime,
+          endTime: currentSlots[idx1].endTime,
+        };
+      }
+      return s;
+    });
+
+    // Check if candidate has any conflicts (teacher or room double-booking)
+    let hasConflict = false;
+    const teacherSlotMap = new Map<string, number>();
+    const roomSlotMap = new Map<string, number>();
+    for (const s of candidateSlots) {
+      const tKey = `${s.teacherId}-${s.dayOfWeek}-${s.startTime}`;
+      const rKey = `${s.roomId}-${s.dayOfWeek}-${s.startTime}`;
+      if (teacherSlotMap.has(tKey) || roomSlotMap.has(rKey)) {
+        hasConflict = true;
+        break;
+      }
+      teacherSlotMap.set(tKey, 1);
+      roomSlotMap.set(rKey, 1);
+    }
+
+    if (hasConflict) continue;
+
+    // Check teacher unavailability for swapped slots
+    let hasUnavailable = false;
+    for (const s of [candidateSlots[idx1], candidateSlots[idx2]]) {
+      const teacher = input.teachers.find((t) => t.id === s.teacherId);
+      if (teacher?.unavailableSlots) {
+        try {
+          const unavailable = JSON.parse(teacher.unavailableSlots);
+          if (unavailable.some((u: { day: number; startTime: string }) => u.day === s.dayOfWeek && u.startTime === s.startTime)) {
+            hasUnavailable = true;
+            break;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+    if (hasUnavailable) continue;
+
+    const candidateScore = computeScore(candidateSlots, input);
+    const delta = candidateScore - currentScore;
+
+    // Accept if better, or with probability if worse (simulated annealing)
+    if (delta > 0 || Math.random() < Math.exp(delta / Math.max(temperature, 0.01))) {
+      currentSlots = candidateSlots;
+      currentScore = candidateScore;
+
+      if (currentScore > bestScore) {
+        bestSlots = [...currentSlots];
+        bestScore = currentScore;
+      }
+    }
+  }
+
+  // Determine unassigned subjects
+  const assignedSubjectIds = new Set(bestSlots.map((s) => s.subjectId));
+  const unassignedSubjects = input.subjects
+    .filter((s) => !assignedSubjectIds.has(s.id))
+    .map((s) => s.name);
+
+  return {
+    slots: bestSlots,
+    score: bestScore,
+    unassignedSubjects,
+  };
 }

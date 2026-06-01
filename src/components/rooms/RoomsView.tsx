@@ -18,11 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload } from "lucide-react";
 import { roomTypes } from "@/lib/countries";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { ImportDialog } from "@/components/shared/ImportDialog";
 import { toast } from "sonner";
 
 interface RoomData {
@@ -49,6 +50,7 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
   const nameRef = useRef<HTMLInputElement>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -227,13 +229,23 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
             {rooms.length > 0 && <span className="ml-1">({rooms.length})</span>}
           </p>
         </div>
-        <Button
-          onClick={openCreate}
-          className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
-        >
-          <Plus className="h-3 w-3 mr-1" />
-          Ajouter une salle
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setImportOpen(true)}
+            variant="ghost"
+            className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#646262] dark:text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+          >
+            <Upload className="h-3 w-3 mr-1" />
+            Importer
+          </Button>
+          <Button
+            onClick={openCreate}
+            className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Ajouter une salle
+          </Button>
+        </div>
       </div>
 
       {/* Search & Bulk actions */}
@@ -422,6 +434,15 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Import Dialog */}
+      <ImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        type="rooms"
+        institutionId={institutionId}
+        onImported={() => loadRooms()}
+      />
 
       {/* Confirm Dialog */}
       <ConfirmDialog

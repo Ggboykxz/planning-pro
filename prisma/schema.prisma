@@ -171,6 +171,8 @@ model Timetable {
   semester      String?
   academicYear  String?
   isActive      Boolean  @default(true)
+  version       Int      @default(1)
+  previousVersionId String?
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -178,6 +180,19 @@ model Timetable {
   institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
   class      Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
   slots      TimetableSlot[]
+  shareTokens ShareToken[]
+  previousVersion Timetable?  @relation("TimetableVersion", fields: [previousVersionId], references: [id])
+  nextVersion     Timetable[] @relation("TimetableVersion")
+}
+
+model ShareToken {
+  id           String   @id @default(cuid())
+  timetableId  String
+  shareId      String   @unique
+  
+  createdAt DateTime @default(now())
+  
+  timetable  Timetable @relation(fields: [timetableId], references: [id], onDelete: Cascade)
 }
 
 model TimetableSlot {

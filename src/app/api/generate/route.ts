@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { generateTimetable, generateTimeSlots, type GenerationInput } from "@/lib/schedule-utils";
+import { generateTimeSlots, generateTimetableAdvanced, type GenerationInput } from "@/lib/schedule-utils";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
@@ -91,8 +91,13 @@ export async function POST(request: Request) {
       }))
     );
 
-    // Generate timetable
-    const generatedSlots = generateTimetable({
+    // Get current active timetable for versioning
+    const currentTimetable = await db.timetable.findFirst({
+      where: { classId, isActive: true },
+    });
+
+    // Generate timetable using advanced algorithm
+    const result = generateTimetableAdvanced({
       classId,
       className: cls.name,
       subjects,
@@ -100,20 +105,23 @@ export async function POST(request: Request) {
       rooms,
       availableSlots,
       existingSlots,
+      classStudentCount: cls.studentCount || undefined,
     });
 
-    if (generatedSlots.length === 0) {
+    if (result.slots.length === 0) {
       return NextResponse.json({
         error: "Impossible de générer l'emploi du temps. Vérifiez que les enseignants et salles sont configurés.",
       }, { status: 400 });
     }
 
-    // Create timetable in database
     // Deactivate existing timetables for this class
     await db.timetable.updateMany({
       where: { classId, isActive: true },
       data: { isActive: false },
     });
+
+    // Create new timetable with version info
+    const newVersion = (currentTimetable?.version || 0) + 1;
 
     const timetable = await db.timetable.create({
       data: {
@@ -123,6 +131,8 @@ export async function POST(request: Request) {
         semester: institution.semesterSystem === "semestriel" ? "S1" : undefined,
         academicYear: institution.academieYear,
         isActive: true,
+        version: newVersion,
+        previousVersionId: currentTimetable?.id || null,
       },
     });
 
@@ -147,7 +157,7 @@ export async function POST(request: Request) {
     const dbTimeSlots = await db.timeSlot.findMany({ where: { institutionId } });
 
     // Create timetable slots
-    for (const slot of generatedSlots) {
+    for (const slot of result.slots) {
       const matchingTimeSlot = dbTimeSlots.find(
         (ts) => ts.dayOfWeek === slot.dayOfWeek && ts.startTime === slot.startTime
       );
@@ -166,8 +176,8 @@ export async function POST(request: Request) {
       });
     }
 
-    // Return the complete timetable
-    const result = await db.timetable.findUnique({
+    // Return the complete timetable with score
+    const fullResult = await db.timetable.findUnique({
       where: { id: timetable.id },
       include: {
         slots: {
@@ -182,7 +192,11 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...fullResult,
+      score: result.score,
+      unassignedSubjects: result.unassignedSubjects,
+    });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: "Erreur lors de la génération de l'emploi du temps" }, { status: 500 });

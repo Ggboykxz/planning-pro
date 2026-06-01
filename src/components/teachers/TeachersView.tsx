@@ -18,10 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, BookOpen } from "lucide-react";
+import { Plus, Pencil, Trash2, BookOpen, Upload, Clock } from "lucide-react";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { ImportDialog } from "@/components/shared/ImportDialog";
+import { AvailabilityEditor } from "@/components/teachers/AvailabilityEditor";
 import { toast } from "sonner";
 
 interface TeacherData {
@@ -32,6 +34,7 @@ interface TeacherData {
   phone: string | null;
   specialization: string | null;
   maxHoursPerWeek: number | null;
+  unavailableSlots: string | null;
   subjectAssignments: Array<{ subject: { id: string; name: string } }>;
   timetableSlots: Array<{ id: string }>;
 }
@@ -57,6 +60,15 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
   const firstNameRef = useRef<HTMLInputElement>(null);
+
+  // Import dialog
+  const [importOpen, setImportOpen] = useState(false);
+
+  // Availability dialog
+  const [availOpen, setAvailOpen] = useState(false);
+  const [availTeacherId, setAvailTeacherId] = useState<string>("");
+  const [availTeacherName, setAvailTeacherName] = useState<string>("");
+  const [availUnavailable, setAvailUnavailable] = useState<Array<{ day: number; startTime: string }>>([]);
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -131,6 +143,21 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
     });
     setValidationErrors({});
     setDialogOpen(true);
+  };
+
+  const openAvailability = (teacher: TeacherData) => {
+    setAvailTeacherId(teacher.id);
+    setAvailTeacherName(`${teacher.firstName} ${teacher.lastName}`);
+    let unavail: Array<{ day: number; startTime: string }> = [];
+    if (teacher.unavailableSlots) {
+      try {
+        unavail = JSON.parse(teacher.unavailableSlots);
+      } catch {
+        // ignore
+      }
+    }
+    setAvailUnavailable(unavail);
+    setAvailOpen(true);
   };
 
   const handleSave = async () => {
@@ -257,13 +284,23 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
             {teachers.length > 0 && <span className="ml-1">({teachers.length})</span>}
           </p>
         </div>
-        <Button
-          onClick={openCreate}
-          className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
-        >
-          <Plus className="h-3 w-3 mr-1" />
-          Ajouter un enseignant
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setImportOpen(true)}
+            variant="ghost"
+            className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#646262] dark:text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+          >
+            <Upload className="h-3 w-3 mr-1" />
+            Importer
+          </Button>
+          <Button
+            onClick={openCreate}
+            className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Ajouter un enseignant
+          </Button>
+        </div>
       </div>
 
       {/* Search & Bulk actions */}
@@ -382,6 +419,13 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
                     </td>
                     <td className="p-2 text-right">
                       <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => openAvailability(teacher)}
+                          className="p-1.5 text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                          title="Disponibilité"
+                        >
+                          <Clock className="h-3 w-3" />
+                        </button>
                         <button
                           onClick={() => openEdit(teacher)}
                           className="p-1.5 text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
@@ -533,6 +577,26 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Import Dialog */}
+      <ImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        type="teachers"
+        institutionId={institutionId}
+        onImported={() => loadData()}
+      />
+
+      {/* Availability Editor */}
+      <AvailabilityEditor
+        open={availOpen}
+        onOpenChange={setAvailOpen}
+        teacherId={availTeacherId}
+        teacherName={availTeacherName}
+        institutionId={institutionId}
+        currentUnavailable={availUnavailable}
+        onSave={() => loadData()}
+      />
 
       {/* Confirm Dialog */}
       <ConfirmDialog

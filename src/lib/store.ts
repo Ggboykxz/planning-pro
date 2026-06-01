@@ -11,6 +11,17 @@ export type AppSection =
 
 export type TimetableViewMode = "class" | "teacher" | "room";
 
+export type NotificationType = "conflict" | "generation_complete" | "import_complete";
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  time: number;
+  read: boolean;
+}
+
 interface AppState {
   currentSection: AppSection;
   setCurrentSection: (section: AppSection) => void;
@@ -30,6 +41,18 @@ interface AppState {
   setCommandPaletteOpen: (open: boolean) => void;
   shortcutsOpen: boolean;
   setShortcutsOpen: (open: boolean) => void;
+  // Semester/Period Selector
+  currentSemester: string | null;
+  currentAcademicYear: string | null;
+  setSemester: (s: string | null) => void;
+  setAcademicYear: (y: string | null) => void;
+  // Notifications
+  notifications: Notification[];
+  addNotification: (n: Omit<Notification, "id" | "time" | "read">) => void;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
+  removeNotification: (id: string) => void;
+  clearNotifications: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -51,4 +74,38 @@ export const useAppStore = create<AppState>((set) => ({
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   shortcutsOpen: false,
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
+  // Semester/Period Selector
+  currentSemester: null,
+  currentAcademicYear: null,
+  setSemester: (s) => set({ currentSemester: s }),
+  setAcademicYear: (y) => set({ currentAcademicYear: y }),
+  // Notifications
+  notifications: [],
+  addNotification: (n) =>
+    set((state) => ({
+      notifications: [
+        {
+          ...n,
+          id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          time: Date.now(),
+          read: false,
+        },
+        ...state.notifications,
+      ],
+    })),
+  markNotificationRead: (id) =>
+    set((state) => ({
+      notifications: state.notifications.map((n) =>
+        n.id === id ? { ...n, read: true } : n
+      ),
+    })),
+  markAllNotificationsRead: () =>
+    set((state) => ({
+      notifications: state.notifications.map((n) => ({ ...n, read: true })),
+    })),
+  removeNotification: (id) =>
+    set((state) => ({
+      notifications: state.notifications.filter((n) => n.id !== id),
+    })),
+  clearNotifications: () => set({ notifications: [] }),
 }));

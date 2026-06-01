@@ -8,6 +8,26 @@ export async function GET(request: Request) {
     const classId = searchParams.get("classId");
     const teacherId = searchParams.get("teacherId");
     const roomId = searchParams.get("roomId");
+    const timetableId = searchParams.get("timetableId");
+
+    // Get specific timetable by ID
+    if (timetableId) {
+      const timetable = await db.timetable.findUnique({
+        where: { id: timetableId },
+        include: {
+          slots: {
+            include: {
+              subject: true,
+              teacher: true,
+              room: true,
+            },
+            orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+          },
+          class: true,
+        },
+      });
+      return NextResponse.json(timetable);
+    }
 
     // Get timetable by class
     if (classId) {
@@ -152,6 +172,8 @@ export async function POST(request: Request) {
         semester: body.semester,
         academicYear: body.academicYear,
         isActive: true,
+        version: body.version || 1,
+        previousVersionId: body.previousVersionId || null,
       },
     });
 
@@ -183,9 +205,24 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, slots, ...data } = body;
+    const { id, slots, slotId, teacherId, roomId, ...data } = body;
+
+    // Single slot update
+    if (slotId) {
+      const updateData: Record<string, unknown> = {};
+      if (teacherId !== undefined) updateData.teacherId = teacherId || null;
+      if (roomId !== undefined) updateData.roomId = roomId || null;
+
+      const slot = await db.timetableSlot.update({
+        where: { id: slotId },
+        data: updateData,
+      });
+      return NextResponse.json(slot);
+    }
+
+    // Full timetable update
     if (!id) {
-      return NextResponse.json({ error: "ID requis" }, { status: 400 });
+      return NextResponse.json({ error: "ID ou slotId requis" }, { status: 400 });
     }
 
     const timetable = await db.timetable.update({
@@ -221,10 +258,30 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const body = await request.json ? {} : {};
+    let slotId: string | null = null;
+    let id: string | null = null;
+
+    // Try to parse body for slotId
+    try {
+      const parsed = await request.json();
+      slotId = parsed.slotId || null;
+      id = parsed.id || null;
+    } catch {
+      // No body or invalid JSON
+    }
+
+    // Delete single slot
+    if (slotId) {
+      await db.timetableSlot.delete({ where: { id: slotId } });
+      return NextResponse.json({ success: true });
+    }
+
+    // Delete full timetable
     const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
+    id = id || searchParams.get("id");
     if (!id) {
-      return NextResponse.json({ error: "ID requis" }, { status: 400 });
+      return NextResponse.json({ error: "ID ou slotId requis" }, { status: 400 });
     }
     await db.timetable.delete({ where: { id } });
     return NextResponse.json({ success: true });

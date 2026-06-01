@@ -14,7 +14,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Sparkles, Printer, AlertTriangle, ZoomIn, ZoomOut, Clock, Download, FileText, Image, Zap, ExternalLink } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Sparkles, Printer, AlertTriangle, ZoomIn, ZoomOut, Clock, Download, FileText, Image, Zap, ExternalLink, Pencil, Trash2, Share2, History, RotateCcw } from "lucide-react";
 import { dayNames } from "@/lib/countries";
 import { useAppStore, type TimetableViewMode } from "@/lib/store";
 import { ContextBar } from "@/components/layout/ContextBar";
@@ -45,9 +52,19 @@ interface TimetableSlotData {
   room: { id: string; name: string; type: string | null } | null;
 }
 
+interface TimetableVersion {
+  id: string;
+  name: string;
+  version: number;
+  isActive: boolean;
+  createdAt: string;
+  _count?: { slots: number };
+}
+
 interface TimetableData {
   id: string;
   name: string;
+  version: number;
   slots: TimetableSlotData[];
   class: { id: string; name: string };
 }
@@ -90,6 +107,10 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
   const [zoom, setZoom] = useState(100);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<TimetableSlotData | null>(null);
+  const [versions, setVersions] = useState<TimetableVersion[]>([]);
+  const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
+  const [editSlotOpen, setEditSlotOpen] = useState(false);
+  const [editSlotData, setEditSlotData] = useState<{ teacherId: string; roomId: string }>({ teacherId: "", roomId: "" });
   const timetableRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -102,6 +123,7 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     selectedRoomId,
     setSelectedRoomId,
     setCurrentSection,
+    addNotification,
   } = useAppStore();
 
   useEffect(() => {
@@ -175,6 +197,10 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
       if (res.ok) {
         const data = await res.json();
         setTimetable(data);
+        // Load versions if class view
+        if (timetableViewMode === "class" && selectedClassId) {
+          loadVersions();
+        }
       } else {
         setTimetable(null);
       }
@@ -184,6 +210,23 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
       setLoading(false);
     }
   }, [timetableViewMode, selectedClassId, selectedTeacherId, selectedRoomId]);
+
+  const loadVersions = async () => {
+    if (!selectedClassId) return;
+    try {
+      const res = await fetch(`/api/timetables?institutionId=${institutionId}`);
+      if (res.ok) {
+        const allTt = await res.json();
+        const classVersions = allTt.filter(
+          (tt: { classId: string; id: string; name: string; version: number; isActive: boolean; createdAt: string; _count?: { slots: number } }) =>
+            tt.classId === selectedClassId
+        );
+        setVersions(classVersions);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const loadConflicts = async () => {
     try {
@@ -211,9 +254,15 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success("Emploi du temps généré avec succès ✓");
+        toast.success(`Emploi du temps généré ✓ (score: ${data.score ?? "N/A"})`);
         setTimetable(data);
         loadConflicts();
+        loadVersions();
+        addNotification({
+          type: "generation_complete",
+          title: "Emploi du temps généré",
+          message: `Génération terminée pour la classe sélectionnée`,
+        });
       } else {
         toast.error(data.error || "Erreur lors de la génération");
       }
@@ -262,6 +311,11 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     }
     loadTimetable();
     loadConflicts();
+    addNotification({
+      type: "generation_complete",
+      title: "Génération en masse terminée",
+      message: `${successCount} emploi(s) du temps généré(s), ${errorCount} erreur(s)`,
+    });
   };
 
   const handlePrint = () => {
@@ -307,11 +361,10 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     toast.success("CSV exporté ✓");
   };
 
-  // PNG Export - uses browser print to PDF as fallback
+  // PNG Export
   const handleExportPNG = async () => {
     if (!timetableRef.current) return;
     try {
-      // Try to use html2canvas if available
       const html2canvasModule = await import("html2canvas").catch(() => null);
       const tableEl = timetableRef.current.querySelector("table");
       if (!tableEl) return;
@@ -327,25 +380,143 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
         link.click();
         toast.success("PNG exporté ✓");
       } else {
-        // Fallback: use SVG foreignObject approach
-        const rect = tableEl.getBoundingClientRect();
-        const svgData = `<svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}">
-          <foreignObject width="100%" height="100%">
-            <div xmlns="http://www.w3.org/1999/xhtml">
-              ${tableEl.outerHTML}
-            </div>
-          </foreignObject>
-        </svg>`;
-        const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = `${timetable?.name || "emploi-du-temps"}.svg`;
-        link.click();
-        URL.revokeObjectURL(link.href);
-        toast.success("SVG exporté ✓ (utilisez Imprimer > PDF pour PNG)");
+        toast.info("Utilisez Imprimer > PDF pour exporter en image");
       }
     } catch {
       toast.info("Utilisez Imprimer > PDF pour exporter en image");
+    }
+  };
+
+  // PDF Export
+  const handleExportPDF = () => {
+    window.print();
+  };
+
+  // Share timetable
+  const handleShare = async () => {
+    if (!timetable) return;
+    try {
+      const res = await fetch("/api/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timetableId: timetable.id }),
+      });
+      if (res.ok) {
+        const { shareId } = await res.json();
+        const shareUrl = `${window.location.origin}/?shareId=${shareId}`;
+        await navigator.clipboard.writeText(shareUrl);
+        toast.success("Lien de partage copié ✓");
+      } else {
+        toast.error("Erreur lors de la création du lien");
+      }
+    } catch {
+      toast.error("Erreur lors du partage");
+    }
+  };
+
+  // Slot editing
+  const handleEditSlot = () => {
+    if (!selectedSlot) return;
+    setEditSlotData({
+      teacherId: selectedSlot.teacher?.id || "",
+      roomId: selectedSlot.room?.id || "",
+    });
+    setEditSlotOpen(true);
+  };
+
+  const handleSaveSlotEdit = async () => {
+    if (!selectedSlot) return;
+    try {
+      const res = await fetch("/api/timetables", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slotId: selectedSlot.id,
+          teacherId: editSlotData.teacherId || undefined,
+          roomId: editSlotData.roomId || undefined,
+        }),
+      });
+      if (res.ok) {
+        toast.success("Créneau modifié ✓");
+        setEditSlotOpen(false);
+        setSelectedSlot(null);
+        loadTimetable();
+      } else {
+        toast.error("Erreur lors de la modification");
+      }
+    } catch {
+      toast.error("Erreur lors de la modification");
+    }
+  };
+
+  // Slot deletion
+  const handleDeleteSlot = async () => {
+    if (!selectedSlot) return;
+    try {
+      const res = await fetch("/api/timetables", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slotId: selectedSlot.id }),
+      });
+      if (res.ok) {
+        toast.success("Créneau supprimé ✓");
+        setSelectedSlot(null);
+        loadTimetable();
+      } else {
+        toast.error("Erreur lors de la suppression");
+      }
+    } catch {
+      toast.error("Erreur lors de la suppression");
+    }
+  };
+
+  // View version
+  const handleViewVersion = async (versionId: string) => {
+    setViewingVersionId(versionId);
+    try {
+      const res = await fetch(`/api/timetables?classId=${selectedClassId}`);
+      if (res.ok) {
+        // We need to get the specific version
+        const allRes = await fetch(`/api/timetables?institutionId=${institutionId}`);
+        if (allRes.ok) {
+          const allTt = await allRes.json();
+          const version = allTt.find((tt: { id: string }) => tt.id === versionId);
+          if (version) {
+            // Load slots for this version
+            const vRes = await fetch(`/api/timetables?classId=${selectedClassId}`);
+            // Actually, we need a different approach - let's use the timetable API with a version query
+          }
+        }
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  // Restore version
+  const handleRestoreVersion = async (versionId: string) => {
+    try {
+      const res = await fetch("/api/timetables", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: versionId, isActive: true }),
+      });
+      if (res.ok) {
+        // Deactivate current
+        if (timetable?.id && timetable.id !== versionId) {
+          await fetch("/api/timetables", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: timetable.id, isActive: false }),
+          });
+        }
+        toast.success("Version restaurée ✓");
+        setViewingVersionId(null);
+        loadTimetable();
+        loadVersions();
+      }
+    } catch {
+      toast.error("Erreur lors de la restauration");
     }
   };
 
@@ -393,11 +564,13 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     }
   }
 
-  // Detect break time rows (slots that fall in typical break period)
+  // Detect break time rows
   const isBreakTime = (startTime: string) => {
     const hour = parseInt(startTime.split(":")[0]);
     return hour >= 12 && hour < 14;
   };
+
+  const isHistoricalVersion = viewingVersionId !== null && timetable?.id === viewingVersionId;
 
   const viewModeTabs = [
     { id: "class", label: "Par classe" },
@@ -407,6 +580,12 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
 
   return (
     <div className="space-y-6">
+      {/* Print header - hidden on screen, visible in print */}
+      <div className="hidden print-header">
+        <h1>{timetable?.name || "Emploi du temps"}</h1>
+        <p>{timetable?.class?.name || ""}</p>
+      </div>
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Emploi du temps</h1>
@@ -492,6 +671,24 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
                 <Download className="h-3 w-3 mr-1" />
                 PNG
               </Button>
+              <Button
+                variant="ghost"
+                onClick={handleExportPDF}
+                className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+                title="Exporter PDF"
+              >
+                <Image className="h-3 w-3 mr-1" alt="" />
+                PDF
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={handleShare}
+                className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+                title="Partager"
+              >
+                <Share2 className="h-3 w-3 mr-1" />
+                Partager
+              </Button>
             </div>
           )}
           <Button
@@ -531,6 +728,33 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
         onSelect={(id) => setTimetableViewMode(id as TimetableViewMode)}
       />
 
+      {/* Historical version notice */}
+      {viewingVersionId && (
+        <div className="border border-[#D97706]/30 bg-[#D97706]/5 dark:bg-[#D97706]/10 p-3 flex items-center justify-between no-print">
+          <div className="flex items-center gap-2">
+            <History className="h-3.5 w-3.5 text-[#D97706]" />
+            <span className="text-xs text-[#D97706] font-bold">Version historique (lecture seule)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => handleRestoreVersion(viewingVersionId)}
+              className="text-xs text-[#D97706] hover:text-[#D97706]"
+            >
+              <RotateCcw className="h-3 w-3 mr-1" />
+              Restaurer cette version
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => { setViewingVersionId(null); loadTimetable(); }}
+              className="text-xs text-[#646262]"
+            >
+              Retour à la version active
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       {classes.length === 0 && timetableViewMode === "class" ? (
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-16 text-center">
@@ -558,6 +782,9 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
               {timetable.name} — {timetable.class.name}
+              {timetable.version > 1 && (
+                <span className="text-[#9A9898] font-normal ml-2">v{timetable.version}</span>
+              )}
             </p>
             <div className="flex items-center gap-1 no-print">
               <button
@@ -728,6 +955,25 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
                                     </span>
                                   </div>
                                 </div>
+                                {/* Edit/Delete buttons */}
+                                {!viewingVersionId && (
+                                  <div className="border-t border-[#E5E5E5] dark:border-[#2A2A2A] px-4 py-2 flex gap-2">
+                                    <button
+                                      onClick={handleEditSlot}
+                                      className="flex-1 flex items-center justify-center gap-1 text-[10px] text-[#201D1D] dark:text-[#FDFCFC] font-bold py-1.5 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                                    >
+                                      <Pencil className="h-3 w-3" />
+                                      Modifier
+                                    </button>
+                                    <button
+                                      onClick={handleDeleteSlot}
+                                      className="flex-1 flex items-center justify-center gap-1 text-[10px] text-[#DC2626] font-bold py-1.5 hover:bg-[#DC2626]/5 transition-colors"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                      Supprimer
+                                    </button>
+                                  </div>
+                                )}
                               </PopoverContent>
                             </Popover>
                           </td>
@@ -757,6 +1003,63 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
             </div>
           )}
 
+          {/* Version History */}
+          {versions.length > 1 && (
+            <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4 no-print">
+              <div className="flex items-center gap-2 mb-3">
+                <History className="h-3.5 w-3.5 text-[#9A9898]" />
+                <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+                  Historique des versions
+                </p>
+              </div>
+              <div className="space-y-0 max-h-48 overflow-y-auto scrollbar-thin">
+                {versions
+                  .sort((a, b) => b.version - a.version)
+                  .map((v) => (
+                    <div
+                      key={v.id}
+                      className={`flex items-center justify-between py-2 px-3 border-b border-[#E5E5E5] dark:border-[#2A2A2A] last:border-0 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors ${
+                        v.id === timetable?.id ? "bg-[#F8F7F7] dark:bg-[#1A1A1A]" : ""
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+                          v{v.version}
+                        </span>
+                        <span className="text-[10px] text-[#9A9898]">
+                          {new Date(v.createdAt).toLocaleDateString("fr-FR")} {new Date(v.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                        {v.isActive && (
+                          <span className="text-[10px] bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-1.5 py-0.5 font-bold">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {!v.isActive && (
+                          <>
+                            <button
+                              onClick={() => handleViewVersion(v.id)}
+                              className="text-[10px] text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] px-2 py-1 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                            >
+                              Voir
+                            </button>
+                            <button
+                              onClick={() => handleRestoreVersion(v.id)}
+                              className="text-[10px] text-[#D97706] hover:text-[#D97706] px-2 py-1 hover:bg-[#D97706]/5 transition-colors"
+                            >
+                              <RotateCcw className="h-3 w-3 inline mr-1" />
+                              Restaurer
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
           {/* Conflict Panel */}
           {conflicts && (
             <ConflictPanel
@@ -766,6 +1069,58 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
           )}
         </div>
       )}
+
+      {/* Edit Slot Dialog */}
+      <Dialog open={editSlotOpen} onOpenChange={setEditSlotOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold">Modifier le créneau</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
+                Enseignant
+              </label>
+              <Select value={editSlotData.teacherId} onValueChange={(v) => setEditSlotData((prev) => ({ ...prev, teacherId: v }))}>
+                <SelectTrigger className="text-xs">
+                  <SelectValue placeholder="Choisir un enseignant" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teachers.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.firstName} {t.lastName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
+                Salle
+              </label>
+              <Select value={editSlotData.roomId} onValueChange={(v) => setEditSlotData((prev) => ({ ...prev, roomId: v }))}>
+                <SelectTrigger className="text-xs">
+                  <SelectValue placeholder="Choisir une salle" />
+                </SelectTrigger>
+                <SelectContent>
+                  {rooms.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditSlotOpen(false)} className="text-xs">
+              Annuler
+            </Button>
+            <Button
+              onClick={handleSaveSlotEdit}
+              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+            >
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

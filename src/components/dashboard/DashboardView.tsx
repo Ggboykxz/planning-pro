@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { StatBlock } from "./StatBlock";
 import { QuickActions } from "./QuickActions";
+import { DashboardCharts } from "./DashboardCharts";
 import { dayNames } from "@/lib/countries";
 import { useAppStore, type AppSection } from "@/lib/store";
 import { UserPlus, DoorOpen, BookOpen, Sparkles, CheckCircle2, Circle, ChevronRight } from "lucide-react";
@@ -36,7 +37,8 @@ interface ChecklistItem {
 export function DashboardView({ institutionId }: DashboardViewProps) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const { setCurrentSection, setTimetableViewMode, setSelectedClassId } = useAppStore();
+  const [subjectData, setSubjectData] = useState<Array<{ name: string; hours: number }>>([]);
+  const { setCurrentSection, setTimetableViewMode, setSelectedClassId, addNotification } = useAppStore();
 
   useEffect(() => {
     loadDashboard();
@@ -48,6 +50,17 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
       if (res.ok) {
         const d = await res.json();
         setData(d);
+      }
+      // Load subject hours
+      const sRes = await fetch(`/api/subjects?institutionId=${institutionId}`);
+      if (sRes.ok) {
+        const subjects = await sRes.json();
+        setSubjectData(
+          subjects.map((s: { name: string; hoursPerWeek: number | null }) => ({
+            name: s.name,
+            hours: s.hoursPerWeek || 0,
+          }))
+        );
       }
     } catch (error) {
       console.error(error);
@@ -327,6 +340,14 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
           </div>
         )}
       </div>
+
+      {/* Analytics Charts */}
+      <DashboardCharts
+        roomUtilization={data.roomUtilization}
+        teacherWorkload={data.teacherWorkload}
+        subjectData={subjectData}
+        completionRate={data.completionRate}
+      />
     </div>
   );
 }

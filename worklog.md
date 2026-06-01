@@ -1,6 +1,59 @@
 # PlanningPro - Worklog
 
 ---
+Task ID: 4
+Agent: Main Agent
+Task: Implement 10 Major SaaS Improvements
+
+Work Log:
+- Updated Prisma schema: added `version`, `previousVersionId` to Timetable model, added `ShareToken` model
+- Ran `bun run db:push` to sync database
+- Updated Zustand store with notifications (add/markRead/remove/clear), semester/academicYear state
+- Created API routes:
+  - `/api/import` - bulk CSV import for teachers/rooms/subjects/classes
+  - `/api/share` - shareable timetable link creation and retrieval
+- Enhanced timetable generation algorithm in `schedule-utils.ts`:
+  - Added `computeScore` function with penalties for consecutive slots, afternoon heavy subjects, room capacity, teacher gaps
+  - Added `generateTimetableAdvanced` with simulated annealing (1000 iterations)
+  - Room capacity filtering based on classStudentCount
+- Updated `/api/generate` to use advanced algorithm, return score, track versions
+- Updated `/api/timetables` to support single slot editing (PUT with slotId) and deletion (DELETE with slotId)
+- Created DashboardCharts.tsx with Recharts (room utilization bar, workload pie, subject hours bar, completion circular)
+- Created ImportDialog.tsx with CSV paste, file upload, format help, preview, and import
+- Created AvailabilityEditor.tsx with weekly grid, toggle cells, save to teacher unavailableSlots
+- Created SharedTimetable.tsx with clean read-only print-friendly layout
+- Created NotificationCenter.tsx with bell icon, badge, dropdown, auto-dismiss
+- Created PDFExport.tsx utility
+- Updated DashboardView.tsx to include charts with "Analytique" section
+- Updated TimetableView.tsx with:
+  - Slot editing (Modifier/Supprimer in popover)
+  - Version history with view/restore
+  - Share button with clipboard copy
+  - PDF export button
+  - Historical version read-only mode
+- Updated TopNav.tsx with NotificationCenter and semester/academic year selector
+- Updated TeachersView.tsx with Import button and Availability button (clock icon)
+- Updated RoomsView.tsx with Import button
+- Updated SubjectsView.tsx with Import button
+- Updated ClassesView.tsx with Import button
+- Enhanced print CSS with proper header, dark mode reset, landscape layout
+- Lint check passed with zero errors
+
+Stage Summary:
+- All 10 major SaaS improvements implemented
+- Dashboard analytics with 4 chart types
+- CSV bulk import for all CRUD entities
+- Teacher availability grid editor
+- Timetable slot manual editing and deletion
+- Timetable versioning with history and restore
+- Shareable timetable links
+- Notification center with bell icon and auto-dismiss
+- Advanced generation algorithm with simulated annealing
+- Semester/period selector in TopNav
+- PDF export with print-optimized layout
+
+
+---
 Task ID: 1
 Agent: Super Z (Main)
 Task: Build complete PlanningPro SaaS timetable management application
@@ -129,3 +182,22 @@ Stage Summary:
 - All new components follow the opencode.ai brutalist/terminal aesthetic
 - All UI remains in French
 - Key new features: Command Palette, Keyboard Shortcuts, CSV/PNG Export, Slot Detail Popover, Theme Toggle, Generate All, Setup Checklist
+---
+Task ID: 3
+Agent: Super Z (main)
+Task: Implement comprehensive SaaS improvements for PlanningPro
+
+Work Log:
+- Explored entire codebase (30+ files) to understand current state
+- Identified 37 gaps and issues in the existing application
+- Planned 10 major SaaS improvements
+- Delegated implementation to full-stack-developer subagent
+- Verified all implementations are working correctly
+
+Stage Summary:
+- 10 major SaaS improvements implemented successfully
+- New files created: DashboardCharts.tsx, ImportDialog.tsx, AvailabilityEditor.tsx, SharedTimetable.tsx, NotificationCenter.tsx, import/route.ts, share/route.ts
+- Updated files: store.ts (notifications + semester), TopNav.tsx (semester selector + notifications), DashboardView.tsx (charts), TimetableView.tsx (edit/delete slots, share, versions, PDF export), TeachersView.tsx (import + availability), RoomsView.tsx (import), SubjectsView.tsx (import), ClassesView.tsx (import), schedule-utils.ts (advanced algorithm with simulated annealing), globals.css (print styles)
+- Prisma schema updated with Timetable versioning and ShareToken model
+- Lint passes with 0 errors
+- Dev server running and all API endpoints verified

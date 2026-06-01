@@ -242,6 +242,8 @@ tr {
   }
   body {
     font-size: 10pt;
+    background: white !important;
+    color: #201D1D !important;
   }
   table {
     page-break-inside: avoid;
@@ -255,6 +257,28 @@ tr {
   @page {
     margin: 1cm;
     size: landscape;
+  }
+  /* Print header */
+  .print-header {
+    display: block !important;
+    text-align: center;
+    margin-bottom: 12pt;
+  }
+  .print-header h1 {
+    font-size: 14pt;
+    font-weight: bold;
+    margin-bottom: 4pt;
+  }
+  .print-header p {
+    font-size: 9pt;
+    color: #646262;
+  }
+  /* Remove dark mode in print */
+  .dark {
+    --background: #FFFFFF;
+    --foreground: #201D1D;
+    background: white !important;
+    color: #201D1D !important;
   }
 }
 
