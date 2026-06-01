@@ -122,6 +122,9 @@
   body {
     @apply bg-background text-foreground font-mono;
   }
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 /* Focus styles */
@@ -171,10 +174,28 @@ tr {
   animation: fadeIn 200ms ease-out;
 }
 
+/* Page transition animation */
+@keyframes pageSlideIn {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.page-transition {
+  animation: pageSlideIn 180ms ease-out;
+}
+
 /* Dialog scale animation */
 @keyframes dialogIn {
   from { opacity: 0; transform: scale(0.97); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* Command palette animation */
+@keyframes commandPaletteIn {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.command-palette-animate {
+  animation: commandPaletteIn 150ms ease-out;
 }
 
 /* Empty state fade in */
@@ -219,6 +240,22 @@ tr {
   .print {
     display: block !important;
   }
+  body {
+    font-size: 10pt;
+  }
+  table {
+    page-break-inside: avoid;
+  }
+  tr {
+    page-break-inside: avoid;
+  }
+  .timetable-cell {
+    padding: 2pt !important;
+  }
+  @page {
+    margin: 1cm;
+    size: landscape;
+  }
 }
 
 /* Mobile bottom nav safe area */
@@ -246,6 +283,15 @@ tr {
   background-color: rgba(253, 252, 252, 0.04);
 }
 
+/* Timetable slot clickable */
+.timetable-slot-clickable {
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+.timetable-slot-clickable:hover {
+  filter: brightness(0.97);
+}
+
 /* Break row styling */
 .break-row {
   background-color: rgba(0, 0, 0, 0.02);
@@ -261,4 +307,12 @@ tr {
 }
 .mobile-menu-animate {
   animation: slideDown 200ms ease-out;
+}
+
+/* Stat block hover */
+.stat-block-hover:hover {
+  background-color: rgba(32, 29, 29, 0.03);
+}
+.dark .stat-block-hover:hover {
+  background-color: rgba(253, 252, 252, 0.03);
 }

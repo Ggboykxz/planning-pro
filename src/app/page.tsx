@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useAppStore } from "@/lib/store";
+import { useAppStore, type AppSection } from "@/lib/store";
 import { TopNav } from "@/components/layout/TopNav";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { DashboardView } from "@/components/dashboard/DashboardView";
@@ -12,6 +12,8 @@ import { SubjectsView } from "@/components/subjects/SubjectsView";
 import { ClassesView } from "@/components/classes/ClassesView";
 import { SettingsView } from "@/components/settings/SettingsView";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
+import { CommandPalette } from "@/components/shared/CommandPalette";
+import { KeyboardShortcuts } from "@/components/shared/KeyboardShortcuts";
 
 interface InstitutionData {
   id: string;
@@ -20,11 +22,22 @@ interface InstitutionData {
   country: string;
 }
 
+const sectionShortcuts: Record<string, AppSection> = {
+  "1": "dashboard",
+  "2": "timetable",
+  "3": "teachers",
+  "4": "rooms",
+  "5": "subjects",
+  "6": "classes",
+  "7": "settings",
+};
+
 export default function HomePage() {
-  const { currentSection, institutionId, setInstitutionId } = useAppStore();
+  const { currentSection, institutionId, setInstitutionId, setCurrentSection } = useAppStore();
   const [institution, setInstitution] = useState<InstitutionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [onboardingLoading, setOnboardingLoading] = useState(false);
+  const [transitionKey, setTransitionKey] = useState(0);
 
   useEffect(() => {
     checkInstitution();
@@ -35,6 +48,41 @@ export default function HomePage() {
       loadInstitution();
     }
   }, [institutionId]);
+
+  // Global keyboard shortcuts for section navigation and search focus
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+
+      // Number keys 1-7 for section navigation (only when not in input)
+      if (!isInInput && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const section = sectionShortcuts[e.key];
+        if (section) {
+          e.preventDefault();
+          setCurrentSection(section);
+          return;
+        }
+      }
+
+      // "/" to focus search inputs
+      if (e.key === "/" && !isInInput) {
+        e.preventDefault();
+        const searchInput = document.querySelector<HTMLInputElement>('input[placeholder*="Rechercher"]');
+        if (searchInput) {
+          searchInput.focus();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [setCurrentSection]);
+
+  // Trigger transition animation on section change
+  useEffect(() => {
+    setTransitionKey((prev) => prev + 1);
+  }, [currentSection]);
 
   const checkInstitution = async () => {
     try {
@@ -147,11 +195,13 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col bg-white dark:bg-[#0A0A0A]">
       <TopNav institutionName={institution.name} />
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
-        <div key={currentSection} className="max-w-[1080px] mx-auto px-4 sm:px-6 py-6 animate-in fade-in duration-200">
+        <div key={transitionKey} className="max-w-[1080px] mx-auto px-4 sm:px-6 py-6 page-transition">
           {renderSection()}
         </div>
       </main>
       <MobileBottomNav />
+      <CommandPalette />
+      <KeyboardShortcuts />
     </div>
   );
 }

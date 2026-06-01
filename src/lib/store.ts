@@ -26,6 +26,10 @@ interface AppState {
   setSelectedRoomId: (id: string | null) => void;
   mobileMenuOpen: boolean;
   setMobileMenuOpen: (open: boolean) => void;
+  commandPaletteOpen: boolean;
+  setCommandPaletteOpen: (open: boolean) => void;
+  shortcutsOpen: boolean;
+  setShortcutsOpen: (open: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -43,4 +47,8 @@ export const useAppStore = create<AppState>((set) => ({
   setSelectedRoomId: (id) => set({ selectedRoomId: id }),
   mobileMenuOpen: false,
   setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
+  commandPaletteOpen: false,
+  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+  shortcutsOpen: false,
+  setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
 }));

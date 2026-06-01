@@ -21,6 +21,7 @@ import {
 import { Plus, Pencil, Trash2, BookOpen } from "lucide-react";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { toast } from "sonner";
 
 interface TeacherData {
@@ -56,6 +57,14 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
   const firstNameRef = useRef<HTMLInputElement>(null);
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  }>({ open: false, title: "", description: "", onConfirm: () => {} });
 
   const [form, setForm] = useState({
     firstName: "",
@@ -162,31 +171,45 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Supprimer cet enseignant ?")) return;
-    try {
-      const res = await fetch(`/api/teachers?id=${id}`, { method: "DELETE" });
-      if (res.ok) {
-        toast.success("Enseignant supprimé ✓");
-        loadData();
-      }
-    } catch {
-      toast.error("Erreur lors de la suppression");
-    }
+  const handleDelete = (id: string) => {
+    setConfirmDialog({
+      open: true,
+      title: "Supprimer l'enseignant",
+      description: "Êtes-vous sûr de vouloir supprimer cet enseignant ? Cette action est irréversible.",
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, open: false }));
+        try {
+          const res = await fetch(`/api/teachers?id=${id}`, { method: "DELETE" });
+          if (res.ok) {
+            toast.success("Enseignant supprimé ✓");
+            loadData();
+          }
+        } catch {
+          toast.error("Erreur lors de la suppression");
+        }
+      },
+    });
   };
 
-  const handleBulkDelete = async () => {
-    if (!confirm(`Supprimer ${selectedIds.size} enseignant(s) ?`)) return;
-    try {
-      for (const id of selectedIds) {
-        await fetch(`/api/teachers?id=${id}`, { method: "DELETE" });
-      }
-      toast.success(`${selectedIds.size} enseignant(s) supprimé(s) ✓`);
-      setSelectedIds(new Set());
-      loadData();
-    } catch {
-      toast.error("Erreur lors de la suppression");
-    }
+  const handleBulkDelete = () => {
+    setConfirmDialog({
+      open: true,
+      title: `Supprimer ${selectedIds.size} enseignant(s)`,
+      description: `Êtes-vous sûr de vouloir supprimer ${selectedIds.size} enseignant(s) ? Cette action est irréversible.`,
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, open: false }));
+        try {
+          for (const id of selectedIds) {
+            await fetch(`/api/teachers?id=${id}`, { method: "DELETE" });
+          }
+          toast.success(`${selectedIds.size} enseignant(s) supprimé(s) ✓`);
+          setSelectedIds(new Set());
+          loadData();
+        } catch {
+          toast.error("Erreur lors de la suppression");
+        }
+      },
+    });
   };
 
   const toggleSubject = (subjectId: string) => {
@@ -264,12 +287,13 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
         <EmptyState
           title={search ? "Aucun résultat" : "Aucun enseignant"}
           description={search ? "Essayez un autre terme de recherche" : "Ajoutez votre premier enseignant pour commencer"}
+          step={1}
           action={
             !search ? (
               <Button
                 onClick={openCreate}
                 variant="ghost"
-                className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A]"
+                className="text-xs border border-[#201D1D] dark:border-[#FDFCFC] text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#201D1D] hover:text-[#FDFCFC] dark:hover:bg-[#FDFCFC] dark:hover:text-[#0A0A0A] px-4 py-2"
               >
                 <Plus className="h-3 w-3 mr-1" />
                 Ajouter
@@ -509,6 +533,18 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        onConfirm={confirmDialog.onConfirm}
+        variant="danger"
+      />
     </div>
   );
 }

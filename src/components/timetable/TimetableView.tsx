@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -9,7 +9,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Sparkles, Printer, AlertTriangle, ZoomIn, ZoomOut, Clock } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Sparkles, Printer, AlertTriangle, ZoomIn, ZoomOut, Clock, Download, FileText, Image, Zap, ExternalLink } from "lucide-react";
 import { dayNames } from "@/lib/countries";
 import { useAppStore, type TimetableViewMode } from "@/lib/store";
 import { ContextBar } from "@/components/layout/ContextBar";
@@ -79,9 +84,13 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
   const [timetable, setTimetable] = useState<TimetableData | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingAll, setGeneratingAll] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState({ current: 0, total: 0 });
   const [conflicts, setConflicts] = useState<ConflictData | null>(null);
   const [zoom, setZoom] = useState(100);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<TimetableSlotData | null>(null);
+  const timetableRef = useRef<HTMLDivElement>(null);
 
   const {
     timetableViewMode,
@@ -92,6 +101,7 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     setSelectedTeacherId,
     selectedRoomId,
     setSelectedRoomId,
+    setCurrentSection,
   } = useAppStore();
 
   useEffect(() => {
@@ -214,8 +224,129 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     }
   };
 
+  const handleGenerateAll = async () => {
+    if (classes.length === 0) {
+      toast.error("Aucune classe configurée");
+      return;
+    }
+    setGeneratingAll(true);
+    setGenerateProgress({ current: 0, total: classes.length });
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < classes.length; i++) {
+      setGenerateProgress({ current: i + 1, total: classes.length });
+      try {
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ institutionId, classId: classes[i].id }),
+        });
+        if (res.ok) {
+          successCount++;
+        } else {
+          errorCount++;
+        }
+      } catch {
+        errorCount++;
+      }
+    }
+
+    setGeneratingAll(false);
+    if (errorCount === 0) {
+      toast.success(`${successCount} emploi(s) du temps généré(s) ✓`);
+    } else if (successCount === 0) {
+      toast.error(`Erreur: aucun emploi du temps généré`);
+    } else {
+      toast.success(`${successCount} généré(s), ${errorCount} erreur(s)`);
+    }
+    loadTimetable();
+    loadConflicts();
+  };
+
   const handlePrint = () => {
     window.print();
+  };
+
+  // CSV Export
+  const handleExportCSV = () => {
+    if (!timetable) return;
+
+    const csvRows: string[] = [];
+    // Header
+    csvRows.push(["Horaire", ...days.map((d) => dayNames[d] || `Jour ${d}`)].join(";"));
+
+    // Data rows
+    for (const time of allTimes) {
+      const [start, end] = time.split("-");
+      const row = [`${start} - ${end}`];
+      for (const day of days) {
+        const slot = slotsByDay[day]?.find(
+          (s) => `${s.startTime}-${s.endTime}` === time
+        );
+        if (slot?.subject) {
+          const parts = [slot.subject.name];
+          if (slot.subject.type) parts.push(`(${slot.subject.type})`);
+          if (slot.teacher) parts.push(`${slot.teacher.firstName} ${slot.teacher.lastName}`);
+          if (slot.room) parts.push(slot.room.name);
+          row.push(parts.join(" - "));
+        } else {
+          row.push("");
+        }
+      }
+      csvRows.push(row.join(";"));
+    }
+
+    const csvContent = csvRows.join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `${timetable.name || "emploi-du-temps"}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast.success("CSV exporté ✓");
+  };
+
+  // PNG Export - uses browser print to PDF as fallback
+  const handleExportPNG = async () => {
+    if (!timetableRef.current) return;
+    try {
+      // Try to use html2canvas if available
+      const html2canvasModule = await import("html2canvas").catch(() => null);
+      const tableEl = timetableRef.current.querySelector("table");
+      if (!tableEl) return;
+
+      if (html2canvasModule?.default) {
+        const canvasResult = await html2canvasModule.default(tableEl, {
+          backgroundColor: document.documentElement.classList.contains("dark") ? "#0A0A0A" : "#FFFFFF",
+          scale: 2,
+        });
+        const link = document.createElement("a");
+        link.href = canvasResult.toDataURL("image/png");
+        link.download = `${timetable?.name || "emploi-du-temps"}.png`;
+        link.click();
+        toast.success("PNG exporté ✓");
+      } else {
+        // Fallback: use SVG foreignObject approach
+        const rect = tableEl.getBoundingClientRect();
+        const svgData = `<svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}">
+          <foreignObject width="100%" height="100%">
+            <div xmlns="http://www.w3.org/1999/xhtml">
+              ${tableEl.outerHTML}
+            </div>
+          </foreignObject>
+        </svg>`;
+        const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `${timetable?.name || "emploi-du-temps"}.svg`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        toast.success("SVG exporté ✓ (utilisez Imprimer > PDF pour PNG)");
+      }
+    } catch {
+      toast.info("Utilisez Imprimer > PDF pour exporter en image");
+    }
   };
 
   // Group slots by day
@@ -268,12 +399,6 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     return hour >= 12 && hour < 14;
   };
 
-  // Get current time info
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
-  const currentTimeStr = `${String(currentHour).padStart(2, "0")}:${String(currentMinute).padStart(2, "0")}`;
-
   const viewModeTabs = [
     { id: "class", label: "Par classe" },
     { id: "teacher", label: "Par enseignant" },
@@ -289,7 +414,7 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
             Consultez et générez les emplois du temps
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {timetableViewMode === "class" && (
             <Select value={selectedClassId || ""} onValueChange={(v) => setSelectedClassId(v)}>
               <SelectTrigger className="w-[180px] text-xs">
@@ -327,14 +452,47 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
             </Select>
           )}
           {timetableViewMode === "class" && (
-            <Button
-              onClick={handleGenerate}
-              disabled={generating || !selectedClassId}
-              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
-            >
-              <Sparkles className="h-3 w-3 mr-1" />
-              {generating ? "Génération..." : "Générer"}
-            </Button>
+            <>
+              <Button
+                onClick={handleGenerate}
+                disabled={generating || !selectedClassId}
+                className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+              >
+                <Sparkles className="h-3 w-3 mr-1" />
+                {generating ? "Génération..." : "Générer"}
+              </Button>
+              <Button
+                onClick={handleGenerateAll}
+                disabled={generatingAll}
+                variant="ghost"
+                className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] no-print"
+              >
+                <Zap className="h-3 w-3 mr-1" />
+                {generatingAll ? `${generateProgress.current}/${generateProgress.total}` : "Générer tout"}
+              </Button>
+            </>
+          )}
+          {timetable && (
+            <div className="flex items-center gap-1 no-print">
+              <Button
+                variant="ghost"
+                onClick={handleExportCSV}
+                className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+                title="Exporter CSV"
+              >
+                <FileText className="h-3 w-3 mr-1" />
+                CSV
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={handleExportPNG}
+                className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+                title="Exporter PNG"
+              >
+                <Download className="h-3 w-3 mr-1" />
+                PNG
+              </Button>
+            </div>
           )}
           <Button
             variant="ghost"
@@ -347,6 +505,24 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
           </Button>
         </div>
       </div>
+
+      {/* Generate all progress */}
+      {generatingAll && (
+        <div className="border border-[#D97706]/30 bg-[#D97706]/5 dark:bg-[#D97706]/10 p-3">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin h-4 w-4 border-2 border-[#D97706] border-t-transparent" />
+            <span className="text-xs text-[#D97706] font-bold">
+              Génération en cours... {generateProgress.current}/{generateProgress.total}
+            </span>
+          </div>
+          <div className="mt-2 h-1 bg-[#F8F7F7] dark:bg-[#1A1A1A] w-full">
+            <div
+              className="h-full bg-[#D97706] transition-all duration-300"
+              style={{ width: `${(generateProgress.current / generateProgress.total) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* View mode tabs */}
       <ContextBar
@@ -403,7 +579,7 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
           </div>
 
           {/* Timetable Grid */}
-          <div className="overflow-x-auto border border-[#E5E5E5] dark:border-[#2A2A2A] relative">
+          <div className="overflow-x-auto border border-[#E5E5E5] dark:border-[#2A2A2A] relative" ref={timetableRef}>
             <table className="w-full border-collapse min-w-[700px]" style={{ fontSize: `${zoom * 0.12}px` }}>
               <thead>
                 <tr className="bg-[#F8F7F7] dark:bg-[#1A1A1A]">
@@ -449,38 +625,111 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
                         const colorIdx = subjectColorMap.get(slot.subject.id) || 0;
                         const color = subjectColorPalette[colorIdx];
                         const isHovered = hoveredSlot === slot.id;
+                        const isSelected = selectedSlot?.id === slot.id;
                         return (
                           <td
                             key={day}
                             className={`border border-[#E5E5E5] dark:border-[#2A2A2A] p-1 timetable-cell ${isBreak ? "break-row" : ""}`}
-                            onMouseEnter={() => setHoveredSlot(slot.id)}
-                            onMouseLeave={() => setHoveredSlot(null)}
                           >
-                            <div
-                              className={`border-l-[3px] ${color.border} ${color.bg} p-2 min-h-[60px] transition-all duration-150 ${isHovered ? "ring-1 ring-[#201D1D]/20 dark:ring-[#FDFCFC]/20" : ""}`}
-                              title={`${slot.subject.name}${slot.subject.type ? ` (${slot.subject.type})` : ""}\n${slot.teacher ? `${slot.teacher.firstName} ${slot.teacher.lastName}` : ""}\n${slot.room ? slot.room.name : ""}\n${start} — ${end}`}
+                            <Popover
+                              open={isSelected}
+                              onOpenChange={(open) => {
+                                if (!open) setSelectedSlot(null);
+                              }}
                             >
-                              <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] truncate">
-                                {slot.subject.name}
-                              </p>
-                              {slot.subject.type && (
-                                <span className="text-[9px] text-[#9A9898] uppercase">
-                                  {slot.subject.type}
-                                </span>
-                              )}
-                              <div className="mt-1">
-                                {slot.teacher && (
-                                  <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
-                                    {slot.teacher.firstName.charAt(0)}. {slot.teacher.lastName}
+                              <PopoverTrigger asChild>
+                                <div
+                                  className={`border-l-[3px] ${color.border} ${color.bg} p-2 min-h-[60px] transition-all duration-150 timetable-slot-clickable ${
+                                    isHovered || isSelected ? "ring-1 ring-[#201D1D]/20 dark:ring-[#FDFCFC]/20" : ""
+                                  }`}
+                                  onMouseEnter={() => setHoveredSlot(slot.id)}
+                                  onMouseLeave={() => setHoveredSlot(null)}
+                                  onClick={() => setSelectedSlot(slot)}
+                                >
+                                  <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] truncate">
+                                    {slot.subject.name}
                                   </p>
-                                )}
-                                {slot.room && (
-                                  <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
-                                    {slot.room.name}
+                                  {slot.subject.type && (
+                                    <span className="text-[9px] text-[#9A9898] uppercase">
+                                      {slot.subject.type}
+                                    </span>
+                                  )}
+                                  <div className="mt-1">
+                                    {slot.teacher && (
+                                      <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
+                                        {slot.teacher.firstName.charAt(0)}. {slot.teacher.lastName}
+                                      </p>
+                                    )}
+                                    {slot.room && (
+                                      <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
+                                        {slot.room.name}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                className="w-64 p-0 border-[#E5E5E5] dark:border-[#2A2A2A]"
+                                side="right"
+                                align="start"
+                              >
+                                <div className="border-b border-[#E5E5E5] dark:border-[#2A2A2A] px-4 py-3">
+                                  <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+                                    {slot.subject.name}
                                   </p>
-                                )}
-                              </div>
-                            </div>
+                                  {slot.subject.type && (
+                                    <span className="text-[10px] text-[#9A9898] uppercase">{slot.subject.type}</span>
+                                  )}
+                                </div>
+                                <div className="px-4 py-3 space-y-2">
+                                  {slot.teacher && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[10px] text-[#9A9898]">Enseignant</span>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedSlot(null);
+                                          setTimetableViewMode("teacher");
+                                          setSelectedTeacherId(slot.teacher!.id);
+                                        }}
+                                        className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold hover:underline flex items-center gap-1"
+                                      >
+                                        {slot.teacher.firstName} {slot.teacher.lastName}
+                                        <ExternalLink className="h-2.5 w-2.5" />
+                                      </button>
+                                    </div>
+                                  )}
+                                  {slot.room && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[10px] text-[#9A9898]">Salle</span>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedSlot(null);
+                                          setTimetableViewMode("room");
+                                          setSelectedRoomId(slot.room!.id);
+                                        }}
+                                        className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold hover:underline flex items-center gap-1"
+                                      >
+                                        {slot.room.name}
+                                        {slot.room.type && <span className="text-[10px] text-[#9A9898] font-normal ml-1">({slot.room.type})</span>}
+                                        <ExternalLink className="h-2.5 w-2.5" />
+                                      </button>
+                                    </div>
+                                  )}
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] text-[#9A9898]">Horaire</span>
+                                    <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC]">
+                                      {start} — {end}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] text-[#9A9898]">Jour</span>
+                                    <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC]">
+                                      {dayNames[slot.dayOfWeek] || `Jour ${slot.dayOfWeek}`}
+                                    </span>
+                                  </div>
+                                </div>
+                              </PopoverContent>
+                            </Popover>
                           </td>
                         );
                       })}

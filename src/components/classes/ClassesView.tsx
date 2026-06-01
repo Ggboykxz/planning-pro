@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { toast } from "sonner";
 
 interface ClassData {
@@ -49,6 +50,14 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
   const nameRef = useRef<HTMLInputElement>(null);
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  }>({ open: false, title: "", description: "", onConfirm: () => {} });
 
   const [form, setForm] = useState({
     name: "",
@@ -159,31 +168,45 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Supprimer cette classe ?")) return;
-    try {
-      const res = await fetch(`/api/classes?id=${id}`, { method: "DELETE" });
-      if (res.ok) {
-        toast.success("Classe supprimée ✓");
-        loadData();
-      }
-    } catch {
-      toast.error("Erreur lors de la suppression");
-    }
+  const handleDelete = (id: string) => {
+    setConfirmDialog({
+      open: true,
+      title: "Supprimer la classe",
+      description: "Êtes-vous sûr de vouloir supprimer cette classe ? Cette action est irréversible.",
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, open: false }));
+        try {
+          const res = await fetch(`/api/classes?id=${id}`, { method: "DELETE" });
+          if (res.ok) {
+            toast.success("Classe supprimée ✓");
+            loadData();
+          }
+        } catch {
+          toast.error("Erreur lors de la suppression");
+        }
+      },
+    });
   };
 
-  const handleBulkDelete = async () => {
-    if (!confirm(`Supprimer ${selectedIds.size} classe(s) ?`)) return;
-    try {
-      for (const id of selectedIds) {
-        await fetch(`/api/classes?id=${id}`, { method: "DELETE" });
-      }
-      toast.success(`${selectedIds.size} classe(s) supprimée(s) ✓`);
-      setSelectedIds(new Set());
-      loadData();
-    } catch {
-      toast.error("Erreur lors de la suppression");
-    }
+  const handleBulkDelete = () => {
+    setConfirmDialog({
+      open: true,
+      title: `Supprimer ${selectedIds.size} classe(s)`,
+      description: `Êtes-vous sûr de vouloir supprimer ${selectedIds.size} classe(s) ? Cette action est irréversible.`,
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, open: false }));
+        try {
+          for (const id of selectedIds) {
+            await fetch(`/api/classes?id=${id}`, { method: "DELETE" });
+          }
+          toast.success(`${selectedIds.size} classe(s) supprimée(s) ✓`);
+          setSelectedIds(new Set());
+          loadData();
+        } catch {
+          toast.error("Erreur lors de la suppression");
+        }
+      },
+    });
   };
 
   const toggleSubject = (subjectId: string) => {
@@ -271,9 +294,10 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
         <EmptyState
           title={search ? "Aucun résultat" : "Aucune classe"}
           description={search ? "Essayez un autre terme de recherche" : "Ajoutez votre première classe"}
+          step={4}
           action={
             !search ? (
-              <Button onClick={openCreate} variant="ghost" className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A]">
+              <Button onClick={openCreate} variant="ghost" className="text-xs border border-[#201D1D] dark:border-[#FDFCFC] text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#201D1D] hover:text-[#FDFCFC] dark:hover:bg-[#FDFCFC] dark:hover:text-[#0A0A0A] px-4 py-2">
                 <Plus className="h-3 w-3 mr-1" /> Ajouter
               </Button>
             ) : undefined
@@ -480,6 +504,18 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        onConfirm={confirmDialog.onConfirm}
+        variant="danger"
+      />
     </div>
   );
 }

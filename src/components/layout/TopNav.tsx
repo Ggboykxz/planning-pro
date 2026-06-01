@@ -1,8 +1,10 @@
 "use client";
 
 import { useAppStore, type AppSection } from "@/lib/store";
-import { Menu, X, Settings } from "lucide-react";
+import { Menu, X, Settings, Sun, Moon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTheme } from "next-themes";
+import { useSyncExternalStore } from "react";
 
 const navItems: { id: AppSection; label: string; shortcut?: string }[] = [
   { id: "dashboard", label: "Tableau de bord" },
@@ -20,6 +22,17 @@ interface TopNavProps {
 
 export function TopNav({ institutionName }: TopNavProps) {
   const { currentSection, setCurrentSection, mobileMenuOpen, setMobileMenuOpen } = useAppStore();
+  const { theme, setTheme } = useTheme();
+  // Use useSyncExternalStore to detect hydration for theme toggle
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  };
 
   return (
     <header className="border-b border-[#E5E5E5] bg-white dark:bg-[#0A0A0A] dark:border-[#2A2A2A] sticky top-0 z-40">
@@ -58,18 +71,35 @@ export function TopNav({ institutionName }: TopNavProps) {
             ))}
           </nav>
 
-          {/* Mobile hamburger */}
-          <button
-            className="md:hidden p-2"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label={mobileMenuOpen ? "Fermer le menu" : "Ouvrir le menu"}
-          >
-            {mobileMenuOpen ? (
-              <X className="h-5 w-5 text-[#201D1D] dark:text-[#FDFCFC]" />
-            ) : (
-              <Menu className="h-5 w-5 text-[#201D1D] dark:text-[#FDFCFC]" />
-            )}
-          </button>
+          {/* Right side: theme toggle + mobile hamburger */}
+          <div className="flex items-center gap-1">
+            {/* Theme toggle */}
+            <button
+              onClick={toggleTheme}
+              className="p-2 text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+              aria-label={mounted && theme === "dark" ? "Mode clair" : "Mode sombre"}
+              title={mounted && theme === "dark" ? "Mode clair" : "Mode sombre"}
+            >
+              {mounted && theme === "dark" ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
+            </button>
+
+            {/* Mobile hamburger */}
+            <button
+              className="md:hidden p-2"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label={mobileMenuOpen ? "Fermer le menu" : "Ouvrir le menu"}
+            >
+              {mobileMenuOpen ? (
+                <X className="h-5 w-5 text-[#201D1D] dark:text-[#FDFCFC]" />
+              ) : (
+                <Menu className="h-5 w-5 text-[#201D1D] dark:text-[#FDFCFC]" />
+              )}
+            </button>
+          </div>
         </div>
       </div>
 

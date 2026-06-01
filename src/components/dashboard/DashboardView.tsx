@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { StatBlock } from "./StatBlock";
 import { QuickActions } from "./QuickActions";
 import { dayNames } from "@/lib/countries";
-import { useAppStore } from "@/lib/store";
-import { UserPlus, DoorOpen, BookOpen, Sparkles, CheckCircle2 } from "lucide-react";
+import { useAppStore, type AppSection } from "@/lib/store";
+import { UserPlus, DoorOpen, BookOpen, Sparkles, CheckCircle2, Circle, ChevronRight } from "lucide-react";
 
 interface DashboardData {
   teacherCount: number;
@@ -24,6 +24,13 @@ interface DashboardData {
 
 interface DashboardViewProps {
   institutionId: string;
+}
+
+interface ChecklistItem {
+  label: string;
+  done: boolean;
+  section: AppSection;
+  count: number;
 }
 
 export function DashboardView({ institutionId }: DashboardViewProps) {
@@ -55,6 +62,20 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
     { label: "Nouvelle matière", onClick: () => setCurrentSection("subjects"), icon: <BookOpen className="h-3.5 w-3.5" /> },
     { label: "Générer emploi du temps", onClick: () => setCurrentSection("timetable"), icon: <Sparkles className="h-3.5 w-3.5" /> },
   ];
+
+  // Setup checklist
+  const checklist: ChecklistItem[] = data
+    ? [
+        { label: "Enseignants configurés", done: data.teacherCount > 0, section: "teachers", count: data.teacherCount },
+        { label: "Salles configurées", done: data.roomCount > 0, section: "rooms", count: data.roomCount },
+        { label: "Matières configurées", done: data.subjectCount > 0, section: "subjects", count: data.subjectCount },
+        { label: "Classes configurées", done: data.classCount > 0, section: "classes", count: data.classCount },
+        { label: "Emplois du temps générés", done: data.timetableCount > 0, section: "timetable", count: data.timetableCount },
+      ]
+    : [];
+
+  const allConfigured = checklist.length > 0 && checklist.every((item) => item.done);
+  const incompleteCount = checklist.filter((item) => !item.done).length;
 
   if (loading) {
     return (
@@ -107,6 +128,53 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         </p>
       </div>
 
+      {/* Setup Checklist */}
+      {!allConfigured && (
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Configuration requise</p>
+              <p className="text-[10px] text-[#9A9898] mt-0.5">
+                {incompleteCount} étape{incompleteCount > 1 ? "s" : ""} restante{incompleteCount > 1 ? "s" : ""}
+              </p>
+            </div>
+            <div className="text-[10px] text-[#9A9898]">
+              {checklist.filter((c) => c.done).length}/{checklist.length}
+            </div>
+          </div>
+          {/* Progress bar */}
+          <div className="h-1 bg-[#F8F7F7] dark:bg-[#1A1A1A] w-full mb-4">
+            <div
+              className="h-full bg-[#201D1D] dark:bg-[#FDFCFC] transition-all duration-500"
+              style={{ width: `${(checklist.filter((c) => c.done).length / checklist.length) * 100}%` }}
+            />
+          </div>
+          <div className="space-y-0">
+            {checklist.map((item, idx) => (
+              <button
+                key={item.label}
+                onClick={() => setCurrentSection(item.section)}
+                className="w-full flex items-center gap-3 py-2 border-b border-[#E5E5E5] dark:border-[#2A2A2A] last:border-0 text-left hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors group"
+              >
+                <span className="text-[10px] text-[#9A9898] w-8 shrink-0">Étape {idx + 1}</span>
+                {item.done ? (
+                  <CheckCircle2 className="h-4 w-4 text-[#201D1D] dark:text-[#FDFCFC] shrink-0" />
+                ) : (
+                  <Circle className="h-4 w-4 text-[#9A9898] shrink-0" />
+                )}
+                <span className={`text-xs flex-1 ${item.done ? "text-[#646262] dark:text-[#9A9898] line-through" : "text-[#201D1D] dark:text-[#FDFCFC] font-bold"}`}>
+                  {item.label}
+                </span>
+                <span className="text-[10px] text-[#9A9898]">
+                  {item.count > 0 ? `${item.count}` : "0"}
+                </span>
+                <ChevronRight className="h-3 w-3 text-[#9A9898] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Quick Actions */}
       <div>
         <p className="text-xs font-bold text-[#9A9898] mb-2">Actions rapides</p>
@@ -119,23 +187,28 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
           label="Enseignants"
           value={data.teacherCount}
           sublabel={`${data.teacherWorkload.filter((t) => t.percentage > 80).length} avec charge élevée`}
+          onClick={() => setCurrentSection("teachers")}
         />
         <StatBlock
           label="Salles"
           value={data.roomCount}
           sublabel={`${data.roomUtilization.filter((r) => r.usedSlots > 0).length} utilisées`}
+          onClick={() => setCurrentSection("rooms")}
         />
         <StatBlock
           label="Matières"
           value={data.subjectCount}
+          onClick={() => setCurrentSection("subjects")}
         />
         <StatBlock
           label="Classes"
           value={data.classCount}
+          onClick={() => setCurrentSection("classes")}
         />
         <StatBlock
           label="Emplois du temps"
           value={data.timetableCount}
+          onClick={() => setCurrentSection("timetable")}
         />
         <StatBlock
           label="Conflits"
