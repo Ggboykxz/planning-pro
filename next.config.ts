@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  allowedDevOrigins: [
+    ".space.chatglm.site",
+    ".space-z.ai",
+    "localhost",
+  ],
 };
 
 export default nextConfig;

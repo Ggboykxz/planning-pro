@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAppStore, sectionToPath, pathToSection, type AppSection } from "@/lib/store";
 import { TopNav } from "@/components/layout/TopNav";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { CommandPalette } from "@/components/shared/CommandPalette";
 import { KeyboardShortcuts } from "@/components/shared/KeyboardShortcuts";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 
 interface InstitutionData {
   id: string;
@@ -28,6 +29,7 @@ const sectionShortcuts: Record<string, AppSection> = {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { currentSection, institutionId, setInstitutionId, setCurrentSection } = useAppStore();
   const [institution, setInstitution] = useState<InstitutionData | null>(null);
+  const [loading, setLoading] = useState(true);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -39,22 +41,47 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, setCurrentSection]);
 
-  // Check institution on mount
+  // Load institution on mount
   const institutionLoaded = useRef(false);
   useEffect(() => {
     if (institutionLoaded.current) return;
     institutionLoaded.current = true;
-    fetch("/api/institution")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.length > 0) {
-          const inst = data[0];
-          setInstitution(inst);
-          setInstitutionId(inst.id);
+
+    const loadInstitution = async () => {
+      try {
+        const res = await fetch("/api/institution");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.length > 0) {
+            const inst = data[0];
+            setInstitution(inst);
+            setInstitutionId(inst.id);
+          }
         }
-      })
-      .catch((error) => console.error(error));
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadInstitution();
   }, [setInstitutionId]);
+
+  // Also re-read institution from store if already loaded
+  useEffect(() => {
+    if (institutionId && !institution) {
+      fetch("/api/institution")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.length > 0) {
+            const inst = data[0];
+            setInstitution(inst);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [institutionId, institution]);
 
   // Global keyboard shortcuts for section navigation
   useEffect(() => {
@@ -86,7 +113,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   // Loading state
-  if (!institutionId || !institution) {
+  if (loading || !institutionId || !institution) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0A0A0A]">
         <div className="text-center">
@@ -104,7 +131,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <TopNav institutionName={institution.name} />
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
         <div className="max-w-[1080px] mx-auto px-4 sm:px-6 py-6 page-transition">
-          {children}
+          <ErrorBoundary section={pathToSection[pathname] || "PlanningPro"}>
+            {children}
+          </ErrorBoundary>
         </div>
       </main>
       <MobileBottomNav />
