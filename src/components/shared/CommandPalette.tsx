@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useAppStore, type AppSection } from "@/lib/store";
+import { useRouter } from "next/navigation";
+import { useAppStore, sectionToPath, type AppSection } from "@/lib/store";
 import {
   LayoutDashboard,
   Calendar,
@@ -15,25 +16,26 @@ import {
   Search,
 } from "lucide-react";
 
-const sectionItems: { id: AppSection; label: string; icon: React.ReactNode; shortcut: string }[] = [
-  { id: "dashboard", label: "Tableau de bord", icon: <LayoutDashboard className="h-3.5 w-3.5" />, shortcut: "1" },
-  { id: "timetable", label: "Emploi du temps", icon: <Calendar className="h-3.5 w-3.5" />, shortcut: "2" },
-  { id: "teachers", label: "Enseignants", icon: <Users className="h-3.5 w-3.5" />, shortcut: "3" },
-  { id: "rooms", label: "Salles", icon: <DoorOpen className="h-3.5 w-3.5" />, shortcut: "4" },
-  { id: "subjects", label: "Matières", icon: <BookOpen className="h-3.5 w-3.5" />, shortcut: "5" },
-  { id: "classes", label: "Classes", icon: <GraduationCap className="h-3.5 w-3.5" />, shortcut: "6" },
-  { id: "settings", label: "Paramètres", icon: <Settings className="h-3.5 w-3.5" />, shortcut: "7" },
+const sectionItems: { id: AppSection; label: string; path: string; icon: React.ReactNode; shortcut: string }[] = [
+  { id: "dashboard", label: "Tableau de bord", path: "/dashboard", icon: <LayoutDashboard className="h-3.5 w-3.5" />, shortcut: "1" },
+  { id: "timetable", label: "Emploi du temps", path: "/timetable", icon: <Calendar className="h-3.5 w-3.5" />, shortcut: "2" },
+  { id: "teachers", label: "Enseignants", path: "/teachers", icon: <Users className="h-3.5 w-3.5" />, shortcut: "3" },
+  { id: "rooms", label: "Salles", path: "/rooms", icon: <DoorOpen className="h-3.5 w-3.5" />, shortcut: "4" },
+  { id: "subjects", label: "Matières", path: "/subjects", icon: <BookOpen className="h-3.5 w-3.5" />, shortcut: "5" },
+  { id: "classes", label: "Classes", path: "/classes", icon: <GraduationCap className="h-3.5 w-3.5" />, shortcut: "6" },
+  { id: "settings", label: "Paramètres", path: "/settings", icon: <Settings className="h-3.5 w-3.5" />, shortcut: "7" },
 ];
 
-const quickActions: { label: string; section: AppSection; icon: React.ReactNode }[] = [
-  { label: "Ajouter un enseignant", section: "teachers", icon: <UserPlus className="h-3.5 w-3.5" /> },
-  { label: "Créer une salle", section: "rooms", icon: <DoorOpen className="h-3.5 w-3.5" /> },
-  { label: "Nouvelle matière", section: "subjects", icon: <BookOpen className="h-3.5 w-3.5" /> },
-  { label: "Générer emploi du temps", section: "timetable", icon: <Sparkles className="h-3.5 w-3.5" /> },
+const quickActions: { label: string; path: string; icon: React.ReactNode }[] = [
+  { label: "Ajouter un enseignant", path: "/teachers", icon: <UserPlus className="h-3.5 w-3.5" /> },
+  { label: "Créer une salle", path: "/rooms", icon: <DoorOpen className="h-3.5 w-3.5" /> },
+  { label: "Nouvelle matière", path: "/subjects", icon: <BookOpen className="h-3.5 w-3.5" /> },
+  { label: "Générer emploi du temps", path: "/timetable", icon: <Sparkles className="h-3.5 w-3.5" /> },
 ];
 
 function CommandPaletteInner() {
-  const { setCommandPaletteOpen, setCurrentSection } = useAppStore();
+  const { setCommandPaletteOpen } = useAppStore();
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -46,18 +48,18 @@ function CommandPaletteInner() {
       shortcut: item.shortcut,
       type: "section" as const,
       action: () => {
-        setCurrentSection(item.id);
+        router.push(item.path);
         setCommandPaletteOpen(false);
       },
     })),
     ...quickActions.map((item) => ({
-      id: `action-${item.section}`,
+      id: `action-${item.path}`,
       label: item.label,
       icon: item.icon,
       shortcut: "",
       type: "action" as const,
       action: () => {
-        setCurrentSection(item.section);
+        router.push(item.path);
         setCommandPaletteOpen(false);
       },
     })),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { DndContext, DragOverlay, closestCenter, type DragStartEvent, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -21,12 +22,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Sparkles, Printer, AlertTriangle, ZoomIn, ZoomOut, Clock, Download, FileText, Image, Zap, ExternalLink, Pencil, Trash2, Share2, History, RotateCcw } from "lucide-react";
+import { Sparkles, Printer, AlertTriangle, ZoomIn, ZoomOut, Clock, Download, FileText, Image, Zap, ExternalLink, Pencil, Trash2, Share2, History, RotateCcw, Undo2, Redo2 } from "lucide-react";
 import { dayNames } from "@/lib/countries";
 import { useAppStore, type TimetableViewMode } from "@/lib/store";
 import { ContextBar } from "@/components/layout/ContextBar";
 import { ConflictPanel } from "./ConflictPanel";
+import { DraggableSlot, DroppableCell, DragOverlayContent } from "./DndSlotComponents";
 import { toast } from "sonner";
+import { useUndoRedo, type UndoEntry } from "@/hooks/useUndoRedo";
 
 // Subject color palette - subtle tints with colored left border
 const subjectColorPalette = [
@@ -40,6 +43,15 @@ const subjectColorPalette = [
   { border: "border-l-pink-500", bg: "bg-pink-50/50 dark:bg-pink-950/20" },
   { border: "border-l-indigo-500", bg: "bg-indigo-50/50 dark:bg-indigo-950/20" },
   { border: "border-l-lime-500", bg: "bg-lime-50/50 dark:bg-lime-950/20" },
+];
+
+// Generation progress steps
+const GENERATION_STEPS = [
+  { label: "Analyse des contraintes...", duration: 600 },
+  { label: "Attribution des enseignants...", duration: 800 },
+  { label: "Attribution des salles...", duration: 700 },
+  { label: "Optimisation...", duration: 1200 },
+  { label: "Vérification des conflits...", duration: 500 },
 ];
 
 interface TimetableSlotData {
@@ -113,6 +125,43 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
   const [editSlotData, setEditSlotData] = useState<{ teacherId: string; roomId: string }>({ teacherId: "", roomId: "" });
   const timetableRef = useRef<HTMLDivElement>(null);
 
+  // DnD state
+  const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
+  const [activeSlotData, setActiveSlotData] = useState<TimetableSlotData | null>(null);
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
+  const [conflictMessages, setConflictMessages] = useState<string[]>([]);
+  const [pendingMove, setPendingMove] = useState<{ slotId: string; dayOfWeek: number; startTime: string; endTime: string } | null>(null);
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  // Generation progress state (TASK 3)
+  const [genProgressStep, setGenProgressStep] = useState(0);
+  const [genProgressPercent, setGenProgressPercent] = useState(0);
+  const [genProgressLabel, setGenProgressLabel] = useState("");
+  const [genResult, setGenResult] = useState<{
+    score: number | null;
+    unassignedSubjects: string[];
+    conflictsCount: number;
+  } | null>(null);
+
+  // Undo/Redo (TASK 2)
+  const {
+    canUndo,
+    canRedo,
+    undoCount,
+    pushUndo,
+    undo,
+    redo,
+    clearStacks,
+  } = useUndoRedo();
+
   const {
     timetableViewMode,
     setTimetableViewMode,
@@ -165,6 +214,7 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
 
   // Load timetable based on view mode
   useEffect(() => {
+    if (viewingVersionId) return; // Don't reload when viewing a version
     if (timetableViewMode === "class" && selectedClassId) {
       loadTimetable();
     } else if (timetableViewMode === "teacher" && selectedTeacherId) {
@@ -178,6 +228,28 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
   useEffect(() => {
     loadConflicts();
   }, [institutionId]);
+
+  // Clear undo stack when switching classes (TASK 2)
+  useEffect(() => {
+    clearStacks();
+  }, [selectedClassId]);
+
+  // Keyboard shortcuts for undo/redo (TASK 2)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === "z" && !e.shiftKey) {
+          e.preventDefault();
+          handleUndo();
+        } else if ((e.key === "z" && e.shiftKey) || e.key === "y") {
+          e.preventDefault();
+          handleRedo();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const loadTimetable = useCallback(async () => {
     setLoading(true);
@@ -243,9 +315,42 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     }
   };
 
+  // TASK 3: Simulated progress steps for generation
+  const simulateGenerationProgress = async (): Promise<void> => {
+    const totalDuration = GENERATION_STEPS.reduce((sum, s) => sum + s.duration, 0);
+    let elapsed = 0;
+
+    for (let i = 0; i < GENERATION_STEPS.length; i++) {
+      setGenProgressStep(i);
+      setGenProgressLabel(GENERATION_STEPS[i].label);
+      const stepDuration = GENERATION_STEPS[i].duration;
+      const startElapsed = elapsed;
+      const endElapsed = elapsed + stepDuration;
+
+      // Animate within this step
+      const animSteps = 10;
+      for (let j = 0; j <= animSteps; j++) {
+        const currentElapsed = startElapsed + (stepDuration * j) / animSteps;
+        const pct = Math.round((currentElapsed / totalDuration) * 100);
+        setGenProgressPercent(pct);
+        await new Promise((r) => setTimeout(r, stepDuration / animSteps));
+      }
+      elapsed = endElapsed;
+    }
+    setGenProgressPercent(100);
+  };
+
   const handleGenerate = async () => {
     if (!selectedClassId) return;
     setGenerating(true);
+    setGenResult(null);
+    setGenProgressStep(0);
+    setGenProgressPercent(0);
+    setGenProgressLabel(GENERATION_STEPS[0].label);
+
+    // Start simulated progress and API call in parallel
+    const progressPromise = simulateGenerationProgress();
+
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -253,20 +358,35 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
         body: JSON.stringify({ institutionId, classId: selectedClassId }),
       });
       const data = await res.json();
+
+      // Wait for progress animation to complete
+      await progressPromise;
+
       if (res.ok) {
-        toast.success(`Emploi du temps généré ✓ (score: ${data.score ?? "N/A"})`);
+        const score = data.score ?? null;
+        const unassignedSubjects: string[] = data.unassignedSubjects || [];
+        const conflictsCount = (data.teacherConflicts?.length || 0) + (data.roomConflicts?.length || 0);
+
+        setGenResult({ score, unassignedSubjects, conflictsCount });
+
+        toast.success(`Emploi du temps généré ✓ (score: ${score ?? "N/A"})`);
         setTimetable(data);
         loadConflicts();
         loadVersions();
+        // Clear undo stack on regeneration (TASK 2)
+        clearStacks();
         addNotification({
           type: "generation_complete",
           title: "Emploi du temps généré",
           message: `Génération terminée pour la classe sélectionnée`,
         });
       } else {
+        setGenResult(null);
         toast.error(data.error || "Erreur lors de la génération");
       }
     } catch {
+      await progressPromise;
+      setGenResult(null);
       toast.error("Erreur lors de la génération");
     } finally {
       setGenerating(false);
@@ -280,6 +400,8 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     }
     setGeneratingAll(true);
     setGenerateProgress({ current: 0, total: classes.length });
+    // Clear undo stack on regeneration (TASK 2)
+    clearStacks();
     let successCount = 0;
     let errorCount = 0;
 
@@ -426,6 +548,27 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
 
   const handleSaveSlotEdit = async () => {
     if (!selectedSlot) return;
+    // Push to undo stack before saving (TASK 2)
+    const undoEntry: UndoEntry = {
+      slotId: selectedSlot.id,
+      actionType: "edit",
+      previousValues: {
+        teacherId: selectedSlot.teacher?.id || null,
+        roomId: selectedSlot.room?.id || null,
+        dayOfWeek: selectedSlot.dayOfWeek,
+        startTime: selectedSlot.startTime,
+        endTime: selectedSlot.endTime,
+      },
+      newValues: {
+        teacherId: editSlotData.teacherId || null,
+        roomId: editSlotData.roomId || null,
+        dayOfWeek: selectedSlot.dayOfWeek,
+        startTime: selectedSlot.startTime,
+        endTime: selectedSlot.endTime,
+      },
+    };
+    pushUndo(undoEntry);
+
     try {
       const res = await fetch("/api/timetables", {
         method: "PUT",
@@ -452,6 +595,32 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
   // Slot deletion
   const handleDeleteSlot = async () => {
     if (!selectedSlot) return;
+    // Push to undo stack before deleting (TASK 2)
+    const undoEntry: UndoEntry = {
+      slotId: selectedSlot.id,
+      actionType: "delete",
+      previousValues: {
+        teacherId: selectedSlot.teacher?.id || null,
+        roomId: selectedSlot.room?.id || null,
+        dayOfWeek: selectedSlot.dayOfWeek,
+        startTime: selectedSlot.startTime,
+        endTime: selectedSlot.endTime,
+      },
+      newValues: {
+        teacherId: null,
+        roomId: null,
+        dayOfWeek: selectedSlot.dayOfWeek,
+        startTime: selectedSlot.startTime,
+        endTime: selectedSlot.endTime,
+      },
+      deletedSlotData: {
+        timetableId: timetable?.id || "",
+        subjectId: selectedSlot.subject?.id || null,
+        timeSlotId: null,
+      },
+    };
+    pushUndo(undoEntry);
+
     try {
       const res = await fetch("/api/timetables", {
         method: "DELETE",
@@ -470,55 +639,180 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     }
   };
 
-  // View version
+  // TASK 1: Fixed handleViewVersion - fetch timetable by ID directly
   const handleViewVersion = async (versionId: string) => {
     setViewingVersionId(versionId);
+    setLoading(true);
     try {
-      const res = await fetch(`/api/timetables?classId=${selectedClassId}`);
+      const res = await fetch(`/api/timetables?timetableId=${versionId}`);
       if (res.ok) {
-        // We need to get the specific version
-        const allRes = await fetch(`/api/timetables?institutionId=${institutionId}`);
-        if (allRes.ok) {
-          const allTt = await allRes.json();
-          const version = allTt.find((tt: { id: string }) => tt.id === versionId);
-          if (version) {
-            // Load slots for this version
-            const vRes = await fetch(`/api/timetables?classId=${selectedClassId}`);
-            // Actually, we need a different approach - let's use the timetable API with a version query
-          }
+        const data = await res.json();
+        if (data) {
+          setTimetable(data);
+        } else {
+          toast.error("Version non trouvée");
+          setViewingVersionId(null);
         }
+      } else {
+        toast.error("Erreur lors du chargement de la version");
+        setViewingVersionId(null);
       }
     } catch (error) {
       console.error(error);
+      toast.error("Erreur lors du chargement de la version");
+      setViewingVersionId(null);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Restore version
+  // TASK 1: Fixed handleRestoreVersion - properly activate version and deactivate current
   const handleRestoreVersion = async (versionId: string) => {
     try {
+      // First, deactivate ALL active timetables for this class
+      if (selectedClassId) {
+        const allRes = await fetch(`/api/timetables?institutionId=${institutionId}`);
+        if (allRes.ok) {
+          const allTt = await allRes.json();
+          const classTimetables = allTt.filter(
+            (tt: { classId: string; isActive: boolean; id: string }) =>
+              tt.classId === selectedClassId && tt.isActive
+          );
+          // Deactivate all currently active timetables for this class
+          for (const tt of classTimetables) {
+            if (tt.id !== versionId) {
+              await fetch("/api/timetables", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: tt.id, isActive: false }),
+              });
+            }
+          }
+        }
+      }
+
+      // Now activate the target version
       const res = await fetch("/api/timetables", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: versionId, isActive: true }),
       });
+
       if (res.ok) {
-        // Deactivate current
-        if (timetable?.id && timetable.id !== versionId) {
-          await fetch("/api/timetables", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: timetable.id, isActive: false }),
-          });
-        }
         toast.success("Version restaurée ✓");
         setViewingVersionId(null);
         loadTimetable();
         loadVersions();
+      } else {
+        toast.error("Erreur lors de la restauration");
       }
     } catch {
       toast.error("Erreur lors de la restauration");
     }
   };
+
+  // TASK 2: Undo handler
+  const handleUndo = useCallback(async () => {
+    const entry = undo();
+    if (!entry) return;
+
+    try {
+      if (entry.actionType === "edit") {
+        // Restore previous values
+        await fetch("/api/timetables", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slotId: entry.slotId,
+            teacherId: entry.previousValues.teacherId || undefined,
+            roomId: entry.previousValues.roomId || undefined,
+          }),
+        });
+        toast.success("Annulé ✓");
+      } else if (entry.actionType === "delete") {
+        // Recreate the deleted slot
+        if (entry.deletedSlotData) {
+          await fetch("/api/timetables", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: entry.deletedSlotData.timetableId,
+              slots: [{
+                subjectId: entry.deletedSlotData.subjectId,
+                teacherId: entry.previousValues.teacherId,
+                roomId: entry.previousValues.roomId,
+                dayOfWeek: entry.previousValues.dayOfWeek,
+                startTime: entry.previousValues.startTime,
+                endTime: entry.previousValues.endTime,
+                timeSlotId: entry.deletedSlotData.timeSlotId,
+              }],
+            }),
+          });
+          toast.success("Créneau restauré ✓");
+        }
+      } else if (entry.actionType === "move") {
+        // Restore previous position
+        await fetch("/api/timetables", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slotId: entry.slotId,
+            teacherId: entry.previousValues.teacherId || undefined,
+            roomId: entry.previousValues.roomId || undefined,
+          }),
+        });
+        toast.success("Annulé ✓");
+      }
+      loadTimetable();
+    } catch {
+      toast.error("Erreur lors de l'annulation");
+    }
+  }, [undo]);
+
+  // TASK 2: Redo handler
+  const handleRedo = useCallback(async () => {
+    const entry = redo();
+    if (!entry) return;
+
+    try {
+      if (entry.actionType === "edit") {
+        // Re-apply the edit
+        await fetch("/api/timetables", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slotId: entry.slotId,
+            teacherId: entry.newValues.teacherId || undefined,
+            roomId: entry.newValues.roomId || undefined,
+          }),
+        });
+        toast.success("Rétabli ✓");
+      } else if (entry.actionType === "delete") {
+        // Re-delete the slot
+        await fetch("/api/timetables", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slotId: entry.slotId }),
+        });
+        toast.success("Suppression rétablie ✓");
+      } else if (entry.actionType === "move") {
+        // Re-apply the move
+        await fetch("/api/timetables", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slotId: entry.slotId,
+            teacherId: entry.newValues.teacherId || undefined,
+            roomId: entry.newValues.roomId || undefined,
+          }),
+        });
+        toast.success("Rétabli ✓");
+      }
+      loadTimetable();
+    } catch {
+      toast.error("Erreur lors du rétablissement");
+    }
+  }, [redo]);
 
   // Group slots by day
   const slotsByDay: Record<number, TimetableSlotData[]> = {};
@@ -571,6 +865,153 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
   };
 
   const isHistoricalVersion = viewingVersionId !== null && timetable?.id === viewingVersionId;
+
+  // DnD handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const slotId = active.id as string;
+    setActiveSlotId(slotId);
+    const slot = timetable?.slots.find((s) => s.id === slotId);
+    if (slot) {
+      setActiveSlotData(slot);
+    }
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveSlotId(null);
+    setActiveSlotData(null);
+
+    if (!over || !active) return;
+    // Only allow drops on empty cells (droppable targets)
+    const slotId = active.id as string;
+    const overData = over.data.current;
+    if (!overData) return;
+
+    const { dayOfWeek: targetDay, startTime: targetStart, endTime: targetEnd } = overData as { dayOfWeek: number; startTime: string; endTime: string };
+    const sourceSlot = timetable?.slots.find((s) => s.id === slotId);
+    if (!sourceSlot) return;
+
+    // Don't do anything if dropped on same position
+    if (sourceSlot.dayOfWeek === targetDay && sourceSlot.startTime === targetStart && sourceSlot.endTime === targetEnd) return;
+
+    // Don't allow DnD on historical versions
+    if (viewingVersionId) {
+      toast.error("Impossible de déplacer un créneau en version historique");
+      return;
+    }
+
+    // Push to undo stack before moving
+    const undoEntry: UndoEntry = {
+      slotId,
+      actionType: "move",
+      previousValues: {
+        teacherId: sourceSlot.teacher?.id || null,
+        roomId: sourceSlot.room?.id || null,
+        dayOfWeek: sourceSlot.dayOfWeek,
+        startTime: sourceSlot.startTime,
+        endTime: sourceSlot.endTime,
+      },
+      newValues: {
+        teacherId: sourceSlot.teacher?.id || null,
+        roomId: sourceSlot.room?.id || null,
+        dayOfWeek: targetDay,
+        startTime: targetStart,
+        endTime: targetEnd,
+      },
+    };
+
+    try {
+      const res = await fetch("/api/timetables", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slotId,
+          dayOfWeek: targetDay,
+          startTime: targetStart,
+          endTime: targetEnd,
+        }),
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        const conflicts = result.conflicts as string[];
+
+        if (conflicts && conflicts.length > 0) {
+          // Store the pending move and show conflict dialog
+          setPendingMove({ slotId, dayOfWeek: targetDay, startTime: targetStart, endTime: targetEnd });
+          setConflictMessages(conflicts);
+          setConflictDialogOpen(true);
+        } else {
+          pushUndo(undoEntry);
+          toast.success("Créneau déplacé ✓");
+          loadTimetable();
+        }
+      } else {
+        toast.error("Erreur lors du déplacement");
+      }
+    } catch {
+      toast.error("Erreur lors du déplacement");
+    }
+  };
+
+  const handleConflictConfirm = () => {
+    // User confirms despite conflict - the move is already done, just close dialog
+    setConflictDialogOpen(false);
+    setConflictMessages([]);
+    setPendingMove(null);
+    if (pendingMove) {
+      pushUndo({
+        slotId: pendingMove.slotId,
+        actionType: "move",
+        previousValues: {
+          teacherId: activeSlotData?.teacher?.id || null,
+          roomId: activeSlotData?.room?.id || null,
+          dayOfWeek: activeSlotData?.dayOfWeek || 0,
+          startTime: activeSlotData?.startTime || "",
+          endTime: activeSlotData?.endTime || "",
+        },
+        newValues: {
+          teacherId: activeSlotData?.teacher?.id || null,
+          roomId: activeSlotData?.room?.id || null,
+          dayOfWeek: pendingMove.dayOfWeek,
+          startTime: pendingMove.startTime,
+          endTime: pendingMove.endTime,
+        },
+      });
+    }
+    toast.success("Créneau déplacé (conflit détecté) ⚠");
+    loadTimetable();
+    setActiveSlotData(null);
+  };
+
+  const handleConflictCancel = async () => {
+    // Undo the move - revert the slot to its original position
+    if (pendingMove && activeSlotData) {
+      try {
+        await fetch("/api/timetables", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slotId: pendingMove.slotId,
+            dayOfWeek: activeSlotData.dayOfWeek,
+            startTime: activeSlotData.startTime,
+            endTime: activeSlotData.endTime,
+          }),
+        });
+        toast.info("Déplacement annulé ✓");
+      } catch {
+        toast.error("Erreur lors de l'annulation");
+      }
+    }
+    setConflictDialogOpen(false);
+    setConflictMessages([]);
+    setPendingMove(null);
+    setActiveSlotData(null);
+    loadTimetable();
+  };
+
+  const dndEnabled = !viewingVersionId;
 
   const viewModeTabs = [
     { id: "class", label: "Par classe" },
@@ -703,6 +1144,100 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
         </div>
       </div>
 
+      {/* TASK 3: Generation progress dialog */}
+      {generating && (
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4 no-print">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="animate-spin h-4 w-4 border-2 border-[#201D1D] dark:border-[#FDFCFC] border-t-transparent" />
+            <div className="flex-1">
+              <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold block">
+                {genProgressLabel}
+              </span>
+              <span className="text-[10px] text-[#9A9898]">
+                Étape {genProgressStep + 1}/{GENERATION_STEPS.length}
+              </span>
+            </div>
+            <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold font-mono">
+              {genProgressPercent}%
+            </span>
+          </div>
+          <div className="h-1.5 bg-[#F8F7F7] dark:bg-[#1A1A1A] w-full">
+            <div
+              className="h-full bg-[#201D1D] dark:bg-[#FDFCFC] transition-all duration-300"
+              style={{ width: `${genProgressPercent}%` }}
+            />
+          </div>
+          <div className="flex gap-1 mt-3">
+            {GENERATION_STEPS.map((step, i) => (
+              <div
+                key={i}
+                className={`flex-1 h-1 transition-colors duration-200 ${
+                  i < genProgressStep
+                    ? "bg-[#201D1D] dark:bg-[#FDFCFC]"
+                    : i === genProgressStep
+                    ? "bg-[#201D1D]/50 dark:bg-[#FDFCFC]/50"
+                    : "bg-[#E5E5E5] dark:bg-[#2A2A2A]"
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* TASK 3: Generation result summary */}
+      {genResult && !generating && (
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4 no-print">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+              Résultat de la génération
+            </p>
+            <button
+              onClick={() => setGenResult(null)}
+              className="text-[10px] text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+            >
+              Fermer
+            </button>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-[#9A9898]">Score:</span>
+              <span className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] font-mono">
+                {genResult.score ?? "N/A"}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-[#9A9898]">Conflits:</span>
+              <span className={`text-xs font-bold font-mono ${genResult.conflictsCount > 0 ? "text-[#DC2626]" : "text-emerald-600"}`}>
+                {genResult.conflictsCount}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-[#9A9898]">Créneaux:</span>
+              <span className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] font-mono">
+                {timetable?.slots?.length || 0}
+              </span>
+            </div>
+          </div>
+          {genResult.unassignedSubjects.length > 0 && (
+            <div className="mt-3 border border-[#D97706]/30 bg-[#D97706]/5 dark:bg-[#D97706]/10 p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle className="h-3 w-3 text-[#D97706]" />
+                <span className="text-[10px] text-[#D97706] font-bold">
+                  Matières non attribuées ({genResult.unassignedSubjects.length})
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {genResult.unassignedSubjects.map((name, i) => (
+                  <span key={i} className="text-[10px] bg-[#D97706]/10 text-[#D97706] px-1.5 py-0.5 border border-[#D97706]/20">
+                    {name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Generate all progress */}
       {generatingAll && (
         <div className="border border-[#D97706]/30 bg-[#D97706]/5 dark:bg-[#D97706]/10 p-3">
@@ -778,7 +1313,7 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Timetable title + zoom controls */}
+          {/* Timetable title + zoom controls + undo/redo */}
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
               {timetable.name} — {timetable.class.name}
@@ -787,6 +1322,41 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
               )}
             </p>
             <div className="flex items-center gap-1 no-print">
+              {/* TASK 2: Undo/Redo buttons */}
+              {!viewingVersionId && (
+                <>
+                  <button
+                    onClick={handleUndo}
+                    disabled={!canUndo}
+                    className={`p-1.5 transition-colors relative ${
+                      canUndo
+                        ? "text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]"
+                        : "text-[#E5E5E5] dark:text-[#2A2A2A] cursor-not-allowed"
+                    }`}
+                    title="Annuler (Ctrl+Z)"
+                  >
+                    <Undo2 className="h-3.5 w-3.5" />
+                    {undoCount > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 text-[7px] bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-1 py-0 font-bold leading-none">
+                        {undoCount}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleRedo}
+                    disabled={!canRedo}
+                    className={`p-1.5 transition-colors ${
+                      canRedo
+                        ? "text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]"
+                        : "text-[#E5E5E5] dark:text-[#2A2A2A] cursor-not-allowed"
+                    }`}
+                    title="Rétablir (Ctrl+Shift+Z)"
+                  >
+                    <Redo2 className="h-3.5 w-3.5" />
+                  </button>
+                  <div className="w-px h-4 bg-[#E5E5E5] dark:bg-[#2A2A2A] mx-0.5" />
+                </>
+              )}
               <button
                 onClick={() => setZoom(Math.max(70, zoom - 10))}
                 className="p-1.5 text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
@@ -806,7 +1376,13 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
           </div>
 
           {/* Timetable Grid */}
-          <div className="overflow-x-auto border border-[#E5E5E5] dark:border-[#2A2A2A] relative" ref={timetableRef}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="overflow-x-auto border border-[#E5E5E5] dark:border-[#2A2A2A] relative" ref={timetableRef}>
             <table className="w-full border-collapse min-w-[700px]" style={{ fontSize: `${zoom * 0.12}px` }}>
               <thead>
                 <tr className="bg-[#F8F7F7] dark:bg-[#1A1A1A]">
@@ -845,7 +1421,16 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
                         if (!slot || !slot.subject) {
                           return (
                             <td key={day} className={`border border-[#E5E5E5] dark:border-[#2A2A2A] p-1 timetable-cell ${isBreak ? "break-row" : ""}`}>
-                              <div className="h-full min-h-[60px]" />
+                              {dndEnabled ? (
+                                <DroppableCell
+                                  id={`drop-${day}-${time}`}
+                                  data={{ dayOfWeek: day, startTime: start, endTime: end }}
+                                >
+                                  <div className="h-full min-h-[60px]" />
+                                </DroppableCell>
+                              ) : (
+                                <div className="h-full min-h-[60px]" />
+                              )}
                             </td>
                           );
                         }
@@ -865,35 +1450,72 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
                               }}
                             >
                               <PopoverTrigger asChild>
-                                <div
-                                  className={`border-l-[3px] ${color.border} ${color.bg} p-2 min-h-[60px] transition-all duration-150 timetable-slot-clickable ${
-                                    isHovered || isSelected ? "ring-1 ring-[#201D1D]/20 dark:ring-[#FDFCFC]/20" : ""
-                                  }`}
-                                  onMouseEnter={() => setHoveredSlot(slot.id)}
-                                  onMouseLeave={() => setHoveredSlot(null)}
-                                  onClick={() => setSelectedSlot(slot)}
-                                >
-                                  <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] truncate">
-                                    {slot.subject.name}
-                                  </p>
-                                  {slot.subject.type && (
-                                    <span className="text-[9px] text-[#9A9898] uppercase">
-                                      {slot.subject.type}
-                                    </span>
-                                  )}
-                                  <div className="mt-1">
-                                    {slot.teacher && (
-                                      <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
-                                        {slot.teacher.firstName.charAt(0)}. {slot.teacher.lastName}
+                                {dndEnabled ? (
+                                  <DraggableSlot
+                                    id={slot.id}
+                                    data={{ slotId: slot.id, dayOfWeek: slot.dayOfWeek, startTime: slot.startTime, endTime: slot.endTime }}
+                                  >
+                                    <div
+                                      className={`border-l-[3px] ${color.border} ${color.bg} p-2 min-h-[60px] transition-all duration-150 timetable-slot-clickable ${
+                                        isHovered || isSelected ? "ring-1 ring-[#201D1D]/20 dark:ring-[#FDFCFC]/20" : ""
+                                      } ${activeSlotId === slot.id ? "opacity-40" : ""}`}
+                                      onMouseEnter={() => setHoveredSlot(slot.id)}
+                                      onMouseLeave={() => setHoveredSlot(null)}
+                                      onClick={() => setSelectedSlot(slot)}
+                                    >
+                                      <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] truncate">
+                                        {slot.subject.name}
                                       </p>
+                                      {slot.subject.type && (
+                                        <span className="text-[9px] text-[#9A9898] uppercase">
+                                          {slot.subject.type}
+                                        </span>
+                                      )}
+                                      <div className="mt-1">
+                                        {slot.teacher && (
+                                          <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
+                                            {slot.teacher.firstName.charAt(0)}. {slot.teacher.lastName}
+                                          </p>
+                                        )}
+                                        {slot.room && (
+                                          <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
+                                            {slot.room.name}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </DraggableSlot>
+                                ) : (
+                                  <div
+                                    className={`border-l-[3px] ${color.border} ${color.bg} p-2 min-h-[60px] transition-all duration-150 timetable-slot-clickable ${
+                                      isHovered || isSelected ? "ring-1 ring-[#201D1D]/20 dark:ring-[#FDFCFC]/20" : ""
+                                    }`}
+                                    onMouseEnter={() => setHoveredSlot(slot.id)}
+                                    onMouseLeave={() => setHoveredSlot(null)}
+                                    onClick={() => setSelectedSlot(slot)}
+                                  >
+                                    <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] truncate">
+                                      {slot.subject.name}
+                                    </p>
+                                    {slot.subject.type && (
+                                      <span className="text-[9px] text-[#9A9898] uppercase">
+                                        {slot.subject.type}
+                                      </span>
                                     )}
-                                    {slot.room && (
-                                      <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
-                                        {slot.room.name}
-                                      </p>
-                                    )}
+                                    <div className="mt-1">
+                                      {slot.teacher && (
+                                        <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
+                                          {slot.teacher.firstName.charAt(0)}. {slot.teacher.lastName}
+                                        </p>
+                                      )}
+                                      {slot.room && (
+                                        <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
+                                          {slot.room.name}
+                                        </p>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </PopoverTrigger>
                               <PopoverContent
                                 className="w-64 p-0 border-[#E5E5E5] dark:border-[#2A2A2A]"
@@ -984,7 +1606,23 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+
+            {/* DnD Drag Overlay */}
+            <DragOverlay>
+              {activeSlotId && activeSlotData ? (
+                <DragOverlayContent
+                  slot={{
+                    subject: activeSlotData.subject,
+                    teacher: activeSlotData.teacher,
+                    room: activeSlotData.room,
+                  }}
+                  colorClass={subjectColorPalette[subjectColorMap.get(activeSlotData.subject?.id || "") || 0]?.border || "border-l-gray-500"}
+                  bgClass={subjectColorPalette[subjectColorMap.get(activeSlotData.subject?.id || "") || 0]?.bg || "bg-gray-50/50"}
+                />
+              ) : null}
+            </DragOverlay>
+          </DndContext>
 
           {/* Subject Hours Summary */}
           {subjectHours.size > 0 && (
@@ -1003,7 +1641,7 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
             </div>
           )}
 
-          {/* Version History */}
+          {/* TASK 1: Version History - enhanced with slot count */}
           {versions.length > 1 && (
             <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4 no-print">
               <div className="flex items-center gap-2 mb-3">
@@ -1028,6 +1666,9 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
                         </span>
                         <span className="text-[10px] text-[#9A9898]">
                           {new Date(v.createdAt).toLocaleDateString("fr-FR")} {new Date(v.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                        <span className="text-[10px] text-[#9A9898]">
+                          {v._count?.slots ?? 0} créneau{(v._count?.slots ?? 0) !== 1 ? "x" : ""}
                         </span>
                         {v.isActive && (
                           <span className="text-[10px] bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-1.5 py-0.5 font-bold">
@@ -1117,6 +1758,48 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
               className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
             >
               Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DnD Conflict Confirmation Dialog */}
+      <Dialog open={conflictDialogOpen} onOpenChange={setConflictDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-[#D97706]" />
+              Conflit détecté
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-[#646262] dark:text-[#9A9898]">
+              Le déplacement de ce créneau crée les conflits suivants:
+            </p>
+            <div className="space-y-2">
+              {conflictMessages.map((msg, i) => (
+                <div key={i} className="border border-[#D97706]/30 bg-[#D97706]/5 dark:bg-[#D97706]/10 p-2">
+                  <p className="text-[10px] text-[#D97706] font-bold">{msg}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-[#9A9898]">
+              Voulez-vous conserver ce déplacement malgré les conflits?
+            </p>
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="ghost"
+              onClick={handleConflictCancel}
+              className="text-xs"
+            >
+              Annuler le déplacement
+            </Button>
+            <Button
+              onClick={handleConflictConfirm}
+              className="text-xs bg-[#D97706] text-white hover:opacity-80 border-0"
+            >
+              Conserver le déplacement
             </Button>
           </DialogFooter>
         </DialogContent>

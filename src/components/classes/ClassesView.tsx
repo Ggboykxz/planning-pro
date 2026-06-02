@@ -12,11 +12,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Pencil, Trash2, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, Download } from "lucide-react";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ImportDialog } from "@/components/shared/ImportDialog";
+import { Pagination } from "@/components/shared/Pagination";
+import { exportToCSV } from "@/lib/export-utils";
 import { toast } from "sonner";
 
 interface ClassData {
@@ -53,6 +55,10 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
   const nameRef = useRef<HTMLInputElement>(null);
   const [importOpen, setImportOpen] = useState(false);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -80,6 +86,11 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
       setValidationErrors({});
     }
   }, [dialogOpen]);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
 
   const loadData = async () => {
     try {
@@ -247,6 +258,35 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
     `${c.name} ${c.level || ""} ${c.department || ""}`.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Pagination calculations
+  const totalPages = Math.max(1, Math.ceil(filteredClasses.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedClasses = filteredClasses.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize
+  );
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
+
+  // CSV Export
+  const handleExportCSV = () => {
+    exportToCSV(filteredClasses, [
+      { header: "Nom", accessor: (c) => c.name },
+      { header: "Niveau", accessor: (c) => c.level || "" },
+      { header: "Effectif", accessor: (c) => c.studentCount || "" },
+      { header: "Matières", accessor: (c) => c.subjects.map((s) => s.subject.name).join(", ") },
+      { header: "Statut emploi du temps", accessor: (c) => c.timetables.length > 0 ? "Configuré" : "Non configuré" },
+    ], "classes");
+    toast.success("CSV exporté ✓");
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -271,6 +311,15 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            onClick={handleExportCSV}
+            variant="ghost"
+            className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#646262] dark:text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+            disabled={filteredClasses.length === 0}
+          >
+            <Download className="h-3 w-3 mr-1" />
+            Exporter
+          </Button>
           <Button
             onClick={() => setImportOpen(true)}
             variant="ghost"
@@ -323,12 +372,12 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC] w-8">
                   <input
                     type="checkbox"
-                    checked={selectedIds.size === filteredClasses.length && filteredClasses.length > 0}
+                    checked={selectedIds.size === paginatedClasses.length && paginatedClasses.length > 0}
                     onChange={() => {
-                      if (selectedIds.size === filteredClasses.length) {
+                      if (selectedIds.size === paginatedClasses.length) {
                         setSelectedIds(new Set());
                       } else {
-                        setSelectedIds(new Set(filteredClasses.map((c) => c.id)));
+                        setSelectedIds(new Set(paginatedClasses.map((c) => c.id)));
                       }
                     }}
                     className="h-3 w-3 accent-[#201D1D] dark:accent-[#FDFCFC]"
@@ -344,7 +393,7 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
               </tr>
             </thead>
             <tbody>
-              {filteredClasses.map((cls) => (
+              {paginatedClasses.map((cls) => (
                 <tr
                   key={cls.id}
                   className="border-t border-[#E5E5E5] dark:border-[#2A2A2A] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
@@ -404,6 +453,13 @@ export function ClassesView({ institutionId }: ClassesViewProps) {
               ))}
             </tbody>
           </table>
+          <Pagination
+            currentPage={safePage}
+            pageSize={pageSize}
+            totalItems={filteredClasses.length}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
+          />
         </div>
       )}
 

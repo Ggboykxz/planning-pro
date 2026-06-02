@@ -18,12 +18,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, BookOpen, Upload, Clock } from "lucide-react";
+import { Plus, Pencil, Trash2, BookOpen, Upload, Clock, Download } from "lucide-react";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ImportDialog } from "@/components/shared/ImportDialog";
 import { AvailabilityEditor } from "@/components/teachers/AvailabilityEditor";
+import { Pagination } from "@/components/shared/Pagination";
+import { exportToCSV } from "@/lib/export-utils";
 import { toast } from "sonner";
 
 interface TeacherData {
@@ -60,6 +62,10 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
   const firstNameRef = useRef<HTMLInputElement>(null);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   // Import dialog
   const [importOpen, setImportOpen] = useState(false);
@@ -99,6 +105,11 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
       setValidationErrors({});
     }
   }, [dialogOpen]);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
 
   const loadData = async () => {
     try {
@@ -261,6 +272,37 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
     `${t.firstName} ${t.lastName} ${t.specialization || ""}`.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Pagination calculations
+  const totalPages = Math.max(1, Math.ceil(filteredTeachers.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedTeachers = filteredTeachers.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize
+  );
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
+
+  // CSV Export
+  const handleExportCSV = () => {
+    exportToCSV(filteredTeachers, [
+      { header: "Prénom", accessor: (t) => t.firstName },
+      { header: "Nom", accessor: (t) => t.lastName },
+      { header: "Email", accessor: (t) => t.email || "" },
+      { header: "Téléphone", accessor: (t) => t.phone || "" },
+      { header: "Spécialisation", accessor: (t) => t.specialization || "" },
+      { header: "Heures Max", accessor: (t) => t.maxHoursPerWeek || "" },
+      { header: "Matières", accessor: (t) => t.subjectAssignments.map((sa) => sa.subject.name).join(", ") },
+    ], "enseignants");
+    toast.success("CSV exporté ✓");
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -285,6 +327,15 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            onClick={handleExportCSV}
+            variant="ghost"
+            className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#646262] dark:text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+            disabled={filteredTeachers.length === 0}
+          >
+            <Download className="h-3 w-3 mr-1" />
+            Exporter
+          </Button>
           <Button
             onClick={() => setImportOpen(true)}
             variant="ghost"
@@ -346,12 +397,12 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC] w-8">
                   <input
                     type="checkbox"
-                    checked={selectedIds.size === filteredTeachers.length && filteredTeachers.length > 0}
+                    checked={selectedIds.size === paginatedTeachers.length && paginatedTeachers.length > 0}
                     onChange={() => {
-                      if (selectedIds.size === filteredTeachers.length) {
+                      if (selectedIds.size === paginatedTeachers.length) {
                         setSelectedIds(new Set());
                       } else {
-                        setSelectedIds(new Set(filteredTeachers.map((t) => t.id)));
+                        setSelectedIds(new Set(paginatedTeachers.map((t) => t.id)));
                       }
                     }}
                     className="h-3 w-3 accent-[#201D1D] dark:accent-[#FDFCFC]"
@@ -366,7 +417,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
               </tr>
             </thead>
             <tbody>
-              {filteredTeachers.map((teacher) => {
+              {paginatedTeachers.map((teacher) => {
                 const assignedSlots = teacher.timetableSlots.length;
                 const maxHours = teacher.maxHoursPerWeek || 0;
                 const loadPct = maxHours > 0 ? Math.round((assignedSlots / maxHours) * 100) : 0;
@@ -447,6 +498,13 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
               })}
             </tbody>
           </table>
+          <Pagination
+            currentPage={safePage}
+            pageSize={pageSize}
+            totalItems={filteredTeachers.length}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
+          />
         </div>
       )}
 

@@ -18,12 +18,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, Download } from "lucide-react";
 import { roomTypes } from "@/lib/countries";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ImportDialog } from "@/components/shared/ImportDialog";
+import { Pagination } from "@/components/shared/Pagination";
+import { exportToCSV } from "@/lib/export-utils";
 import { toast } from "sonner";
 
 interface RoomData {
@@ -52,6 +54,10 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
   const nameRef = useRef<HTMLInputElement>(null);
   const [importOpen, setImportOpen] = useState(false);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -78,6 +84,11 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
       setValidationErrors({});
     }
   }, [dialogOpen]);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
 
   const loadRooms = async () => {
     try {
@@ -206,6 +217,34 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
     `${r.name} ${r.building || ""} ${getRoomTypeLabel(r.type)}`.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Pagination calculations
+  const totalPages = Math.max(1, Math.ceil(filteredRooms.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedRooms = filteredRooms.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize
+  );
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
+
+  // CSV Export
+  const handleExportCSV = () => {
+    exportToCSV(filteredRooms, [
+      { header: "Nom", accessor: (r) => r.name },
+      { header: "Type", accessor: (r) => getRoomTypeLabel(r.type) },
+      { header: "Capacité", accessor: (r) => r.capacity || "" },
+      { header: "Utilisation", accessor: (r) => `${r.timetableSlots.length} créneau${r.timetableSlots.length !== 1 ? "x" : ""}` },
+    ], "salles");
+    toast.success("CSV exporté ✓");
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -230,6 +269,15 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            onClick={handleExportCSV}
+            variant="ghost"
+            className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#646262] dark:text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+            disabled={filteredRooms.length === 0}
+          >
+            <Download className="h-3 w-3 mr-1" />
+            Exporter
+          </Button>
           <Button
             onClick={() => setImportOpen(true)}
             variant="ghost"
@@ -282,12 +330,12 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC] w-8">
                   <input
                     type="checkbox"
-                    checked={selectedIds.size === filteredRooms.length && filteredRooms.length > 0}
+                    checked={selectedIds.size === paginatedRooms.length && paginatedRooms.length > 0}
                     onChange={() => {
-                      if (selectedIds.size === filteredRooms.length) {
+                      if (selectedIds.size === paginatedRooms.length) {
                         setSelectedIds(new Set());
                       } else {
-                        setSelectedIds(new Set(filteredRooms.map((r) => r.id)));
+                        setSelectedIds(new Set(paginatedRooms.map((r) => r.id)));
                       }
                     }}
                     className="h-3 w-3 accent-[#201D1D] dark:accent-[#FDFCFC]"
@@ -303,7 +351,7 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
               </tr>
             </thead>
             <tbody>
-              {filteredRooms.map((room) => {
+              {paginatedRooms.map((room) => {
                 const usedSlots = room.timetableSlots.length;
                 return (
                   <tr
@@ -349,6 +397,13 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
               })}
             </tbody>
           </table>
+          <Pagination
+            currentPage={safePage}
+            pageSize={pageSize}
+            totalItems={filteredRooms.length}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
+          />
         </div>
       )}
 

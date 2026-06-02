@@ -340,3 +340,16 @@ tr {
 .dark .stat-block-hover:hover {
   background-color: rgba(253, 252, 252, 0.03);
 }
+
+/* DnD drag styles */
+.timetable-slot-clickable:active {
+  cursor: grabbing;
+}
+
+/* DnD drop target highlight */
+[data-dnd-droppable]:hover {
+  background-color: rgba(32, 29, 29, 0.03);
+}
+.dark [data-dnd-droppable]:hover {
+  background-color: rgba(253, 252, 252, 0.03);
+}

@@ -18,12 +18,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, Download } from "lucide-react";
 import { subjectTypes } from "@/lib/countries";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ImportDialog } from "@/components/shared/ImportDialog";
+import { Pagination } from "@/components/shared/Pagination";
+import { exportToCSV } from "@/lib/export-utils";
 import { toast } from "sonner";
 
 interface SubjectData {
@@ -54,6 +56,10 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
   const nameRef = useRef<HTMLInputElement>(null);
   const [importOpen, setImportOpen] = useState(false);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -81,6 +87,11 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
       setValidationErrors({});
     }
   }, [dialogOpen]);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
 
   const loadSubjects = async () => {
     try {
@@ -211,6 +222,36 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
     `${s.name} ${s.code || ""} ${getTypeLabel(s.type)}`.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Pagination calculations
+  const totalPages = Math.max(1, Math.ceil(filteredSubjects.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedSubjects = filteredSubjects.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize
+  );
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
+
+  // CSV Export
+  const handleExportCSV = () => {
+    exportToCSV(filteredSubjects, [
+      { header: "Nom", accessor: (s) => s.name },
+      { header: "Code", accessor: (s) => s.code || "" },
+      { header: "Type", accessor: (s) => getTypeLabel(s.type) },
+      { header: "Semestre", accessor: (s) => s.semester || "" },
+      { header: "Coefficient", accessor: (s) => s.coefficient || "" },
+      { header: "Heures/Semaine", accessor: (s) => s.hoursPerWeek || "" },
+    ], "matieres");
+    toast.success("CSV exporté ✓");
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -235,6 +276,15 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            onClick={handleExportCSV}
+            variant="ghost"
+            className="text-xs border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#646262] dark:text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+            disabled={filteredSubjects.length === 0}
+          >
+            <Download className="h-3 w-3 mr-1" />
+            Exporter
+          </Button>
           <Button
             onClick={() => setImportOpen(true)}
             variant="ghost"
@@ -287,12 +337,12 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC] w-8">
                   <input
                     type="checkbox"
-                    checked={selectedIds.size === filteredSubjects.length && filteredSubjects.length > 0}
+                    checked={selectedIds.size === paginatedSubjects.length && paginatedSubjects.length > 0}
                     onChange={() => {
-                      if (selectedIds.size === filteredSubjects.length) {
+                      if (selectedIds.size === paginatedSubjects.length) {
                         setSelectedIds(new Set());
                       } else {
-                        setSelectedIds(new Set(filteredSubjects.map((s) => s.id)));
+                        setSelectedIds(new Set(paginatedSubjects.map((s) => s.id)));
                       }
                     }}
                     className="h-3 w-3 accent-[#201D1D] dark:accent-[#FDFCFC]"
@@ -309,7 +359,7 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
               </tr>
             </thead>
             <tbody>
-              {filteredSubjects.map((subject) => (
+              {paginatedSubjects.map((subject) => (
                 <tr
                   key={subject.id}
                   className="border-t border-[#E5E5E5] dark:border-[#2A2A2A] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
@@ -361,6 +411,13 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
               ))}
             </tbody>
           </table>
+          <Pagination
+            currentPage={safePage}
+            pageSize={pageSize}
+            totalItems={filteredSubjects.length}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
+          />
         </div>
       )}
 

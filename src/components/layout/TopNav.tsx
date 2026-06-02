@@ -1,20 +1,22 @@
 "use client";
 
-import { useAppStore, type AppSection } from "@/lib/store";
-import { Menu, X, Settings, Sun, Moon, ChevronDown } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useAppStore, sectionToPath, type AppSection } from "@/lib/store";
+import { Menu, X, Sun, Moon, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
 import { useSyncExternalStore, useState } from "react";
 import { NotificationCenter } from "@/components/shared/NotificationCenter";
 
-const navItems: { id: AppSection; label: string; shortcut?: string }[] = [
-  { id: "dashboard", label: "Tableau de bord" },
-  { id: "timetable", label: "Emploi du temps" },
-  { id: "teachers", label: "Enseignants" },
-  { id: "rooms", label: "Salles" },
-  { id: "subjects", label: "Matières" },
-  { id: "classes", label: "Classes" },
-  { id: "settings", label: "Paramètres" },
+const navItems: { id: AppSection; label: string; path: string; shortcut?: string }[] = [
+  { id: "dashboard", label: "Tableau de bord", path: "/dashboard" },
+  { id: "timetable", label: "Emploi du temps", path: "/timetable" },
+  { id: "teachers", label: "Enseignants", path: "/teachers" },
+  { id: "rooms", label: "Salles", path: "/rooms" },
+  { id: "subjects", label: "Matières", path: "/subjects" },
+  { id: "classes", label: "Classes", path: "/classes" },
+  { id: "settings", label: "Paramètres", path: "/settings" },
 ];
 
 const semesters = ["S1", "S2", "S3", "S4", "S5", "S6"];
@@ -26,8 +28,6 @@ interface TopNavProps {
 
 export function TopNav({ institutionName }: TopNavProps) {
   const {
-    currentSection,
-    setCurrentSection,
     mobileMenuOpen,
     setMobileMenuOpen,
     currentSemester,
@@ -35,6 +35,7 @@ export function TopNav({ institutionName }: TopNavProps) {
     setSemester,
     setAcademicYear,
   } = useAppStore();
+  const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const [semesterOpen, setSemesterOpen] = useState(false);
   // Use useSyncExternalStore to detect hydration for theme toggle
@@ -54,12 +55,12 @@ export function TopNav({ institutionName }: TopNavProps) {
         <div className="flex items-center justify-between h-12">
           {/* Logo + institution name + semester selector */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentSection("dashboard")}
+            <Link
+              href="/dashboard"
               className="font-bold text-sm text-[#201D1D] dark:text-[#FDFCFC] hover:opacity-70 transition-opacity"
             >
               PlanningPro_
-            </button>
+            </Link>
             {institutionName && (
               <span className="hidden sm:inline text-[10px] text-[#9A9898] border-l border-[#E5E5E5] dark:border-[#2A2A2A] pl-2">
                 {institutionName}
@@ -125,18 +126,18 @@ export function TopNav({ institutionName }: TopNavProps) {
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-6">
             {navItems.map((item) => (
-              <button
+              <Link
                 key={item.id}
-                onClick={() => setCurrentSection(item.id)}
+                href={item.path}
                 className={cn(
                   "text-sm pb-3 pt-3 border-b-2 transition-all duration-150",
-                  currentSection === item.id
+                  pathname === item.path
                     ? "border-[#201D1D] dark:border-[#FDFCFC] text-[#201D1D] dark:text-[#FDFCFC] font-bold"
                     : "border-transparent text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
                 )}
               >
                 {item.label}
-              </button>
+              </Link>
             ))}
           </nav>
 
@@ -179,21 +180,19 @@ export function TopNav({ institutionName }: TopNavProps) {
         <div className="md:hidden border-t border-[#E5E5E5] dark:border-[#2A2A2A] bg-white dark:bg-[#0A0A0A] mobile-menu-animate no-print">
           <nav className="flex flex-col">
             {navItems.map((item) => (
-              <button
+              <Link
                 key={item.id}
-                onClick={() => {
-                  setCurrentSection(item.id);
-                  setMobileMenuOpen(false);
-                }}
+                href={item.path}
+                onClick={() => setMobileMenuOpen(false)}
                 className={cn(
                   "text-sm px-6 py-3 text-left border-l-2 transition-all duration-150",
-                  currentSection === item.id
+                  pathname === item.path
                     ? "border-[#201D1D] dark:border-[#FDFCFC] bg-[#F8F7F7] dark:bg-[#1A1A1A] text-[#201D1D] dark:text-[#FDFCFC] font-bold"
                     : "border-transparent text-[#646262] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
                 )}
               >
                 {item.label}
-              </button>
+              </Link>
             ))}
             {/* Mobile semester selector */}
             <div className="px-6 py-3 border-t border-[#E5E5E5] dark:border-[#2A2A2A]">

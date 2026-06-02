@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "next-themes";
+import { GlobalErrorBoundary } from "@/components/shared/GlobalErrorBoundary";
 
 export const metadata: Metadata = {
   title: "PlanningPro - Gestion d'Emplois du Temps",
@@ -26,7 +27,9 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <GlobalErrorBoundary>
+            {children}
+          </GlobalErrorBoundary>
           <Toaster position="top-right" />
         </ThemeProvider>
       </body>

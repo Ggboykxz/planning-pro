@@ -9,6 +9,27 @@ export type AppSection =
   | "classes"
   | "settings";
 
+// URL path <-> AppSection mapping
+export const sectionToPath: Record<AppSection, string> = {
+  dashboard: "/dashboard",
+  timetable: "/timetable",
+  teachers: "/teachers",
+  rooms: "/rooms",
+  subjects: "/subjects",
+  classes: "/classes",
+  settings: "/settings",
+};
+
+export const pathToSection: Record<string, AppSection> = {
+  "/dashboard": "dashboard",
+  "/timetable": "timetable",
+  "/teachers": "teachers",
+  "/rooms": "rooms",
+  "/subjects": "subjects",
+  "/classes": "classes",
+  "/settings": "settings",
+};
+
 export type TimetableViewMode = "class" | "teacher" | "room";
 
 export type NotificationType = "conflict" | "generation_complete" | "import_complete";

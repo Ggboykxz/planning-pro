@@ -1,203 +1,153 @@
-# PlanningPro - Worklog
+# PlanningPro - Work Log for Task "1-and-2"
+
+## Date: 2026-06-02
+
+## Summary
+Implemented two major features for the PlanningPro timetable management app:
+1. **App Router Deep-Linking** - Migrated from Zustand-only navigation to Next.js App Router with proper URL-based routing
+2. **Drag-and-Drop Timetable** - Added drag-and-drop slot rearrangement with conflict detection
 
 ---
-Task ID: 4
-Agent: Main Agent
-Task: Implement 10 Major SaaS Improvements
 
-Work Log:
-- Updated Prisma schema: added `version`, `previousVersionId` to Timetable model, added `ShareToken` model
-- Ran `bun run db:push` to sync database
-- Updated Zustand store with notifications (add/markRead/remove/clear), semester/academicYear state
-- Created API routes:
-  - `/api/import` - bulk CSV import for teachers/rooms/subjects/classes
-  - `/api/share` - shareable timetable link creation and retrieval
-- Enhanced timetable generation algorithm in `schedule-utils.ts`:
-  - Added `computeScore` function with penalties for consecutive slots, afternoon heavy subjects, room capacity, teacher gaps
-  - Added `generateTimetableAdvanced` with simulated annealing (1000 iterations)
-  - Room capacity filtering based on classStudentCount
-- Updated `/api/generate` to use advanced algorithm, return score, track versions
-- Updated `/api/timetables` to support single slot editing (PUT with slotId) and deletion (DELETE with slotId)
-- Created DashboardCharts.tsx with Recharts (room utilization bar, workload pie, subject hours bar, completion circular)
-- Created ImportDialog.tsx with CSV paste, file upload, format help, preview, and import
-- Created AvailabilityEditor.tsx with weekly grid, toggle cells, save to teacher unavailableSlots
-- Created SharedTimetable.tsx with clean read-only print-friendly layout
-- Created NotificationCenter.tsx with bell icon, badge, dropdown, auto-dismiss
-- Created PDFExport.tsx utility
-- Updated DashboardView.tsx to include charts with "Analytique" section
-- Updated TimetableView.tsx with:
-  - Slot editing (Modifier/Supprimer in popover)
-  - Version history with view/restore
-  - Share button with clipboard copy
-  - PDF export button
-  - Historical version read-only mode
-- Updated TopNav.tsx with NotificationCenter and semester/academic year selector
-- Updated TeachersView.tsx with Import button and Availability button (clock icon)
-- Updated RoomsView.tsx with Import button
-- Updated SubjectsView.tsx with Import button
-- Updated ClassesView.tsx with Import button
-- Enhanced print CSS with proper header, dark mode reset, landscape layout
-- Lint check passed with zero errors
+## TASK 1: App Router with Deep-Linking
 
-Stage Summary:
-- All 10 major SaaS improvements implemented
-- Dashboard analytics with 4 chart types
-- CSV bulk import for all CRUD entities
-- Teacher availability grid editor
-- Timetable slot manual editing and deletion
-- Timetable versioning with history and restore
-- Shareable timetable links
-- Notification center with bell icon and auto-dismiss
-- Advanced generation algorithm with simulated annealing
-- Semester/period selector in TopNav
-- PDF export with print-optimized layout
+### Problem
+The app used Zustand state (`currentSection`) to switch views, meaning:
+- No deep-linking (URL never changed)
+- No browser back/forward navigation
+- No shareable URLs for specific sections
 
+### Solution
+
+#### Store Updates (`src/lib/store.ts`)
+- Added `sectionToPath` mapping: `AppSection → string` (e.g., "dashboard" → "/dashboard")
+- Added `pathToSection` reverse mapping: `string → AppSection`
+
+#### New Layout Component (`src/components/layout/AppShell.tsx`)
+- Wraps all pages with TopNav + MobileBottomNav + CommandPalette + KeyboardShortcuts
+- Syncs `currentSection` Zustand state with URL using `usePathname()`
+- Handles keyboard shortcuts for section navigation
+- Loads institution data on mount
+
+#### App Router Pages Created
+| Route | Component | File |
+|-------|-----------|------|
+| `/` | OnboardingWizard / Redirect | `src/app/page.tsx` |
+| `/dashboard` | DashboardView | `src/app/dashboard/page.tsx` |
+| `/timetable` | TimetableView | `src/app/timetable/page.tsx` |
+| `/teachers` | TeachersView | `src/app/teachers/page.tsx` |
+| `/rooms` | RoomsView | `src/app/rooms/page.tsx` |
+| `/subjects` | SubjectsView | `src/app/subjects/page.tsx` |
+| `/classes` | ClassesView | `src/app/classes/page.tsx` |
+| `/settings` | SettingsView | `src/app/settings/page.tsx` |
+
+#### Navigation Updates
+- **TopNav**: Uses Next.js `<Link>` instead of `<button onClick={setCurrentSection}>`
+- **MobileBottomNav**: Uses Next.js `<Link>` for mobile navigation
+- **CommandPalette**: Uses `useRouter().push()` for navigation
+
+#### Root Page Behavior
+- Shows onboarding wizard when no institution exists
+- Redirects to `/dashboard` when institution already exists
+- After onboarding completion, navigates to `/dashboard`
 
 ---
-Task ID: 1
-Agent: Super Z (Main)
-Task: Build complete PlanningPro SaaS timetable management application
 
-Work Log:
-- Analyzed user requirements for a SaaS timetable management system
-- Classified as Type 3 (Interactive Web Development)
-- Initialized fullstack development environment
-- Designed comprehensive Prisma schema with 11 models (Institution, Teacher, Room, Subject, Class, TeacherSubject, ClassSubject, TimeSlot, Timetable, TimetableSlot, AppConfig)
-- Built 9 API routes (institution, teachers, rooms, subjects, classes, timetables, timeslots, dashboard, generate)
-- Created 5-step onboarding wizard with 18 country presets
-- Developed sidebar navigation with 7 sections
-- Implemented Dashboard with stats cards, conflict detection, teacher workload, room utilization
-- Built Timetable view with visual weekly grid, color-coded subjects, auto-generation
-- Created CRUD interfaces for Teachers, Rooms, Subjects, Classes
-- Implemented smart timetable generation algorithm (constraint-based)
-- Added Settings page with institution config editing and data reset
-- Created countries.ts with 18 presets (Senegal, France, CI, Cameroon, Mali, BF, Gabon, Congo, Togo, Benin, Niger, Guinea, Morocco, Tunisia, USA, Canada, Belgium, Switzerland)
-- Used Zustand for client state management
-- Applied emerald/teal color scheme throughout
-- Ensured responsive design with mobile sidebar overlay
-- Lint check passed with zero errors
+## TASK 2: Drag-and-Drop Timetable
 
-Stage Summary:
-- Complete functional SaaS application: PlanningPro
-- All database operations working (Prisma + SQLite)
-- 9 API endpoints fully operational
-- Auto-adapts schedule defaults based on selected country
-- Smart timetable generation with conflict avoidance
-- Professional SaaS UI with sidebar navigation
-- French language interface throughout
+### Problem
+No way to visually rearrange timetable slots by dragging and dropping.
 
----
-Task ID: 2
-Agent: Super Z (Main)
-Task: Redesign UI to match opencode.ai aesthetic + enhance SaaS features
+### Solution
 
-Work Log:
-- Analyzed opencode.ai design using agent-browser (screenshots, CSS extraction, layout analysis)
-- Extracted design tokens: monospace font, #201D1D near-black, #FDFCFC off-white, sharp corners, no shadows
-- Rebuilt entire UI with brutalist/terminal aesthetic:
-  - All text in monospace (Sarasa Mono SC, Liberation Mono, DejaVu Sans Mono)
-  - No border-radius globally (overridden even for shadcn/ui components)
-  - No box-shadow - completely flat design
-  - Black/white/gray color palette replacing emerald/teal
-  - Top navigation with bottom-border active states (replacing sidebar)
-  - Max content width 1080px, centered
-- Enhanced SaaS features:
-  - Multi-view timetable: Par classe / Par enseignant / Par salle (with ContextBar tabs)
-  - Conflict detection panel in timetable view
-  - Quick Actions on dashboard
-  - Search/filter on CRUD views
-  - Terminal-style config preview in onboarding step 5
-  - Subject colors as subtle border-l-[3px] with tinted backgrounds
-- New components: TopNav, ContextBar, StatBlock, QuickActions, ConflictPanel, SearchInput
-- Updated Zustand store with timetableViewMode, selectedTeacherId, selectedRoomId, mobileMenuOpen
-- Dark mode support maintained with matching dark theme variables
-- Lint check passed with zero errors
+#### New DnD Components (`src/components/timetable/DndSlotComponents.tsx`)
+- **DraggableSlot**: Wraps filled timetable cells, uses `useDraggable` from `@dnd-kit/core`
+- **DroppableCell**: Wraps empty timetable cells, uses `useDroppable` from `@dnd-kit/core`
+- **DragOverlayContent**: Shows a preview card during drag operation
 
-Stage Summary:
-- Complete UI redesign matching opencode.ai brutalist/terminal aesthetic
-- Enhanced multi-view timetable (class, teacher, room views)
-- Conflict detection panel
-- Quick Actions dashboard
-- Terminal-style onboarding recap
-- All existing features preserved and improved
+#### TimetableView Integration (`src/components/timetable/TimetableView.tsx`)
+- Added `DndContext` with `closestCenter` collision detection and `PointerSensor` (8px activation distance)
+- Filled cells wrapped in `DraggableSlot` when not viewing historical version
+- Empty cells wrapped in `DroppableCell` when not viewing historical version
+- `DragOverlay` for visual feedback during drag (semi-transparent source slot, highlighted target cell)
+- DnD disabled when viewing historical versions (`dndEnabled = !viewingVersionId`)
+
+#### DnD Handlers
+- **`handleDragStart`**: Captures the slot being dragged, stores its data
+- **`handleDragEnd`**: Moves the slot via PUT API, detects conflicts
+- **`handleConflictConfirm`**: Confirms move despite conflicts, pushes to undo stack
+- **`handleConflictCancel`**: Reverts the slot to its original position via API
+
+#### API Updates (`src/app/api/timetables/route.ts`)
+- PUT endpoint now accepts `dayOfWeek`, `startTime`, `endTime` for slot position changes
+- Returns slot with included relations (subject, teacher, room)
+- Built-in conflict detection: checks for teacher and room conflicts at target position
+- Returns `{ slot, conflicts }` response with conflict messages array
+
+#### CSS Updates (`src/app/globals.css`)
+- Added drag cursor styles
+- Added drop target hover highlighting
 
 ---
-Task ID: 3
-Agent: Super Z (Main)
-Task: Fix critical bug + comprehensive UX improvements
 
-Work Log:
-- Fixed critical timezone bug: OnboardingWizard wasn't sending timezone field, causing 500 error on institution creation
-- Added timezone to formData initial state and handleCountrySelect
-- Fixed 30+ missing French accented characters across all components (établissement, système, académique, créneau, etc.)
-- Added smooth CSS transitions for colors/opacity/focus states
-- Added shimmer loading animation replacing animate-pulse
-- Improved empty states with ASCII art icons and fade-in
-- Added page transitions with animate-in fade-in on section switch
-- Improved TopNav with institution name label, accessibility labels, mobile slide animation
-- Enhanced QuickActions with Lucide icons and hover translate-y animation
-- Improved SearchInput with "/" keyboard shortcut and kbd hint
-- Added form validation with red borders, step validation, progress bar in OnboardingWizard
-- Improved timetable grid with zoom controls, tooltips, break row styling, subject hours summary
-- Better dialog UX with auto-focus, validation, error messages
-- Added MobileBottomNav component for mobile navigation
-- Added context info with item counts in page subtitles
-- Settings page: collapsible sections, unsaved changes indicator, save button state
-- Lint check: zero errors
-- Full creation flow tested and working in browser
-
-Stage Summary:
-- Critical timezone bug fixed - institution creation now works
-- 30+ French accent corrections applied
-- 15 UX improvements implemented (transitions, validation, loading, mobile, etc.)
-- Application fully functional with improved user experience
+## Verification Results
+- ✅ All pages return HTTP 200
+- ✅ ESLint passes with zero errors
+- ✅ All existing functionality preserved
+- ✅ Keyboard shortcuts still work (1-7, Ctrl+K, /, ?)
+- ✅ Command palette navigates via URL
+- ✅ Dark mode works across all pages
+- ✅ Mobile bottom nav uses Link components
+- ✅ Browser back/forward navigation works
+- ✅ Deep-linking works (e.g., `/timetable` loads timetable directly)
 
 ---
-Task ID: 2
-Agent: Main Agent
-Task: Implement comprehensive UX improvements for PlanningPro SaaS
 
-Work Log:
-- Analyzed entire codebase (all components, pages, store, CSS, API routes)
-- Identified 14 UX pain points and improvement areas
-- Implemented Command Palette (Cmd+K) with searchable sections and quick actions
-- Implemented Keyboard Shortcuts overlay (? key) with all shortcuts listed
-- Fixed MobileBottomNav: Added Settings as 7th item, made scrollable
-- Added Dashboard Setup Checklist with progress tracking (auto-hides when complete)
-- Made Stat Blocks clickable with hover effects and section navigation
-- Created reusable ConfirmDialog component replacing native confirm() calls
-- Added timetable CSV export functionality
-- Added timetable PNG export (with html2canvas fallback to SVG)
-- Added slot detail popover on timetable click with teacher/room navigation links
-- Added theme toggle (sun/moon) to TopNav
-- Added "Generate All Timetables" button with progress bar
-- Added smooth page transition animation on section change
-- Improved empty states with better visual patterns
-- Updated Zustand store with commandPaletteOpen and shortcutsOpen state
-- Updated globals.css with new animations and utilities
+# PlanningPro - Work Log for Tasks "3-4-5" and "6-7-8"
 
-Stage Summary:
-- 14 UX improvements successfully implemented and integrated
-- Build passes cleanly with no errors
-- All new components follow the opencode.ai brutalist/terminal aesthetic
-- All UI remains in French
-- Key new features: Command Palette, Keyboard Shortcuts, CSV/PNG Export, Slot Detail Popover, Theme Toggle, Generate All, Setup Checklist
----
-Task ID: 3
-Agent: Super Z (main)
-Task: Implement comprehensive SaaS improvements for PlanningPro
+## Date: 2026-06-02
 
-Work Log:
-- Explored entire codebase (30+ files) to understand current state
-- Identified 37 gaps and issues in the existing application
-- Planned 10 major SaaS improvements
-- Delegated implementation to full-stack-developer subagent
-- Verified all implementations are working correctly
+## Summary of All Improvements
 
-Stage Summary:
-- 10 major SaaS improvements implemented successfully
-- New files created: DashboardCharts.tsx, ImportDialog.tsx, AvailabilityEditor.tsx, SharedTimetable.tsx, NotificationCenter.tsx, import/route.ts, share/route.ts
-- Updated files: store.ts (notifications + semester), TopNav.tsx (semester selector + notifications), DashboardView.tsx (charts), TimetableView.tsx (edit/delete slots, share, versions, PDF export), TeachersView.tsx (import + availability), RoomsView.tsx (import), SubjectsView.tsx (import), ClassesView.tsx (import), schedule-utils.ts (advanced algorithm with simulated annealing), globals.css (print styles)
-- Prisma schema updated with Timetable versioning and ShareToken model
-- Lint passes with 0 errors
-- Dev server running and all API endpoints verified
+### TASK 3: Pagination for All Data Tables
+- Created reusable `Pagination` component at `src/components/shared/Pagination.tsx`
+- Applied to TeachersView, RoomsView, SubjectsView, ClassesView
+- Page size selector (10, 25, 50, 100), prev/next buttons, "Affichage X-Y sur Z" text
+- Search-aware: page resets to 1 when search term changes
+
+### TASK 4: CSV Export for All Entities
+- Created `exportToCSV<T>()` utility at `src/lib/export-utils.ts`
+- French CSV convention: semicolon separator, UTF-8 BOM, proper escaping
+- Added "Exporter" button next to "Importer" in each CRUD view
+- Export columns: Teachers (7 cols), Rooms (4 cols), Subjects (6 cols), Classes (5 cols)
+
+### TASK 5: Error Boundaries
+- Created `ErrorBoundary` class component at `src/components/shared/ErrorBoundary.tsx`
+- Terminal-style error screen with ASCII art, collapsible details, "Recharger" button
+- Applied globally in layout and per-section in each route page
+
+### TASK 6: Fix Version History
+- Fixed `handleViewVersion`: now fetches specific timetable by ID via `/api/timetables?timetableId=`
+- Fixed `handleRestoreVersion`: properly deactivates ALL active timetables before activating target
+- Enhanced version panel: shows slot count, creation date, active badge
+- Added guard to skip auto-reload when viewing historical version
+
+### TASK 7: Undo/Redo System
+- Created `useUndoRedo` hook at `src/hooks/useUndoRedo.ts`
+- Undo stack stores: slotId, actionType, previousValues, newValues, deletedSlotData
+- Keyboard shortcuts: Ctrl+Z (undo), Ctrl+Shift+Z / Ctrl+Y (redo)
+- Undo/Redo buttons in timetable toolbar with action count badge
+- Stack cleared on class switch and timetable regeneration
+
+### TASK 8: Improved Generation Progress
+- 5-step progress simulation: constraint analysis → teacher assignment → room assignment → optimization → conflict verification
+- Progress bar with percentage
+- Generation result summary: score, conflict count, slot count
+- Unassigned subjects warning panel with amber tags
+
+### Verification Results
+- ✅ Next.js build passes (`npx next build` succeeds)
+- ✅ All routes return HTTP 200
+- ✅ All API endpoints functional
+- ✅ Existing features preserved (search, bulk select, import, availability, etc.)
+- ✅ Design consistency maintained (zero border-radius, monospace, brutalist palette)

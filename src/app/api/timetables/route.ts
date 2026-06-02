@@ -207,17 +207,65 @@ export async function PUT(request: Request) {
     const body = await request.json();
     const { id, slots, slotId, teacherId, roomId, ...data } = body;
 
-    // Single slot update
+    // Single slot update (including move via dayOfWeek/startTime/endTime)
     if (slotId) {
       const updateData: Record<string, unknown> = {};
       if (teacherId !== undefined) updateData.teacherId = teacherId || null;
       if (roomId !== undefined) updateData.roomId = roomId || null;
+      if (body.dayOfWeek !== undefined) updateData.dayOfWeek = body.dayOfWeek;
+      if (body.startTime !== undefined) updateData.startTime = body.startTime;
+      if (body.endTime !== undefined) updateData.endTime = body.endTime;
 
       const slot = await db.timetableSlot.update({
         where: { id: slotId },
         data: updateData,
+        include: {
+          subject: true,
+          teacher: true,
+          room: true,
+        },
       });
-      return NextResponse.json(slot);
+
+      // Conflict detection: check if the move creates teacher or room conflicts
+      const conflicts: string[] = [];
+
+      if (slot.teacherId) {
+        const teacherSlots = await db.timetableSlot.findMany({
+          where: {
+            teacherId: slot.teacherId,
+            dayOfWeek: slot.dayOfWeek,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            id: { not: slot.id },
+          },
+          include: { timetable: { include: { class: true } } },
+        });
+        if (teacherSlots.length > 0) {
+          conflicts.push(
+            `Enseignant déjà assigné: ${teacherSlots.map(s => s.timetable?.class?.name || "inconnu").join(", ")}`
+          );
+        }
+      }
+
+      if (slot.roomId) {
+        const roomSlots = await db.timetableSlot.findMany({
+          where: {
+            roomId: slot.roomId,
+            dayOfWeek: slot.dayOfWeek,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            id: { not: slot.id },
+          },
+          include: { timetable: { include: { class: true } } },
+        });
+        if (roomSlots.length > 0) {
+          conflicts.push(
+            `Salle déjà occupée: ${roomSlots.map(s => s.timetable?.class?.name || "inconnu").join(", ")}`
+          );
+        }
+      }
+
+      return NextResponse.json({ slot, conflicts });
     }
 
     // Full timetable update
