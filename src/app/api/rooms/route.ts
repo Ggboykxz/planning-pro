@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { dataStore, isDatabaseAvailable } from "@/lib/data-store";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -8,18 +8,28 @@ export async function GET(request: Request) {
     if (!institutionId) {
       return NextResponse.json({ error: "institutionId requis" }, { status: 400 });
     }
-    const rooms = await db.room.findMany({
-      where: { institutionId },
-      include: {
-        timetableSlots: {
-          select: { id: true },
+
+    // Try enriched query with DB
+    if (await isDatabaseAvailable()) {
+      const { db } = await import("@/lib/db");
+      const rooms = await db.room.findMany({
+        where: { institutionId },
+        include: {
+          timetableSlots: { select: { id: true } },
         },
-      },
-      orderBy: { name: "asc" },
-    });
-    return NextResponse.json(rooms);
+        orderBy: { name: "asc" },
+      });
+      return NextResponse.json(rooms);
+    }
+
+    // Fallback: basic data
+    const rooms = await dataStore.room.findMany({ where: { institutionId } });
+    return NextResponse.json(rooms.map((r) => ({
+      ...r,
+      timetableSlots: [],
+    })));
   } catch (error) {
-    console.error(error);
+    console.error("GET /api/rooms error:", error);
     return NextResponse.json({ error: "Erreur lors de la récupération des salles" }, { status: 500 });
   }
 }
@@ -27,21 +37,24 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const room = await db.room.create({
+    const room = await dataStore.room.create({
       data: {
         institutionId: body.institutionId,
         name: body.name,
-        capacity: body.capacity,
-        type: body.type,
-        building: body.building,
-        floor: body.floor,
+        capacity: body.capacity || null,
+        type: body.type || null,
+        building: body.building || null,
+        floor: body.floor || null,
         equipment: body.equipment ? JSON.stringify(body.equipment) : null,
       },
     });
     return NextResponse.json(room);
   } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: "Erreur lors de la création de la salle" }, { status: 500 });
+    console.error("POST /api/rooms error:", error);
+    return NextResponse.json({
+      error: "Erreur lors de la création de la salle",
+      details: error instanceof Error ? error.message : String(error),
+    }, { status: 500 });
   }
 }
 
@@ -58,13 +71,13 @@ export async function PUT(request: Request) {
       updateData.equipment = JSON.stringify(data.equipment);
     }
 
-    const room = await db.room.update({
+    const room = await dataStore.room.update({
       where: { id },
       data: updateData,
     });
     return NextResponse.json(room);
   } catch (error) {
-    console.error(error);
+    console.error("PUT /api/rooms error:", error);
     return NextResponse.json({ error: "Erreur lors de la mise à jour de la salle" }, { status: 500 });
   }
 }
@@ -76,10 +89,10 @@ export async function DELETE(request: Request) {
     if (!id) {
       return NextResponse.json({ error: "ID requis" }, { status: 400 });
     }
-    await db.room.delete({ where: { id } });
+    await dataStore.room.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error(error);
+    console.error("DELETE /api/rooms error:", error);
     return NextResponse.json({ error: "Erreur lors de la suppression de la salle" }, { status: 500 });
   }
 }

@@ -17,6 +17,7 @@ export default function HomePage() {
   const [institution, setInstitution] = useState<InstitutionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [onboardingLoading, setOnboardingLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const router = useRouter();
   const hasRedirected = useRef(false);
 
@@ -57,28 +58,43 @@ export default function HomePage() {
 
   const handleOnboardingComplete = async (formData: Record<string, unknown>) => {
     setOnboardingLoading(true);
+    setErrorMessage(null);
     try {
       const res = await fetch("/api/institution", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
+
       if (res.ok) {
         const inst = await res.json();
         setInstitution(inst);
         setInstitutionId(inst.id);
 
-        await fetch("/api/timeslots", {
+        // Try to generate time slots (non-blocking, don't fail if this errors)
+        fetch("/api/timeslots", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ institutionId: inst.id, generateFromConfig: true }),
+        }).catch(() => {
+          // Silently ignore time slot generation errors
         });
 
         // Navigate to dashboard after onboarding
         router.push("/dashboard");
+      } else {
+        // Show the error from the API
+        let errorData: { error?: string; details?: string };
+        try {
+          errorData = await res.json();
+        } catch {
+          errorData = { error: `Erreur serveur (${res.status})` };
+        }
+        setErrorMessage(errorData.error || errorData.details || `Erreur lors de la création (${res.status})`);
       }
     } catch (error) {
       console.error(error);
+      setErrorMessage(error instanceof Error ? error.message : "Erreur de connexion au serveur");
     } finally {
       setOnboardingLoading(false);
     }
@@ -101,10 +117,23 @@ export default function HomePage() {
   // Onboarding if no institution
   if (!institutionId || !institution) {
     return (
-      <OnboardingWizard
-        onComplete={handleOnboardingComplete}
-        isLoading={onboardingLoading}
-      />
+      <div>
+        {errorMessage && (
+          <div className="fixed top-0 left-0 right-0 z-50 bg-[#DC2626] text-[#FDFCFC] px-4 py-3 text-xs font-bold flex items-center justify-between">
+            <span>{errorMessage}</span>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="ml-4 px-2 py-1 border border-[#FDFCFC] hover:bg-[#FDFCFC] hover:text-[#DC2626] transition-colors"
+            >
+              Fermer
+            </button>
+          </div>
+        )}
+        <OnboardingWizard
+          onComplete={handleOnboardingComplete}
+          isLoading={onboardingLoading}
+        />
+      </div>
     );
   }
 

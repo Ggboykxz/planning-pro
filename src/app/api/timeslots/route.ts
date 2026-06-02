@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { dataStore } from "@/lib/data-store";
 import { generateTimeSlots } from "@/lib/schedule-utils";
 import { NextResponse } from "next/server";
 
@@ -9,13 +9,13 @@ export async function GET(request: Request) {
     if (!institutionId) {
       return NextResponse.json({ error: "institutionId requis" }, { status: 400 });
     }
-    const timeSlots = await db.timeSlot.findMany({
+    const timeSlots = await dataStore.timeSlot.findMany({
       where: { institutionId },
       orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
     });
     return NextResponse.json(timeSlots);
   } catch (error) {
-    console.error(error);
+    console.error("GET /api/timeslots error:", error);
     return NextResponse.json({ error: "Erreur lors de la récupération des créneaux" }, { status: 500 });
   }
 }
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
 
     // Auto-generate from institution config
     if (body.generateFromConfig && body.institutionId) {
-      const institution = await db.institution.findUnique({
+      const institution = await dataStore.institution.findUnique({
         where: { id: body.institutionId },
       });
       if (!institution) {
@@ -45,13 +45,13 @@ export async function POST(request: Request) {
 
       const created = [];
       for (const slot of slots) {
-        const ts = await db.timeSlot.create({
+        const ts = await dataStore.timeSlot.create({
           data: {
             institutionId: body.institutionId,
             dayOfWeek: slot.dayOfWeek,
             startTime: slot.startTime,
             endTime: slot.endTime,
-            label: slot.label,
+            label: slot.label || null,
             isBreak: slot.isBreak || false,
           },
         });
@@ -64,13 +64,13 @@ export async function POST(request: Request) {
     if (Array.isArray(body.slots)) {
       const created = [];
       for (const slot of body.slots) {
-        const ts = await db.timeSlot.create({
+        const ts = await dataStore.timeSlot.create({
           data: {
             institutionId: body.institutionId,
             dayOfWeek: slot.dayOfWeek,
             startTime: slot.startTime,
             endTime: slot.endTime,
-            label: slot.label,
+            label: slot.label || null,
             isBreak: slot.isBreak || false,
           },
         });
@@ -79,20 +79,23 @@ export async function POST(request: Request) {
       return NextResponse.json(created);
     }
 
-    const timeSlot = await db.timeSlot.create({
+    const timeSlot = await dataStore.timeSlot.create({
       data: {
         institutionId: body.institutionId,
         dayOfWeek: body.dayOfWeek,
         startTime: body.startTime,
         endTime: body.endTime,
-        label: body.label,
+        label: body.label || null,
         isBreak: body.isBreak || false,
       },
     });
     return NextResponse.json(timeSlot);
   } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: "Erreur lors de la création du créneau" }, { status: 500 });
+    console.error("POST /api/timeslots error:", error);
+    return NextResponse.json({
+      error: "Erreur lors de la création du créneau",
+      details: error instanceof Error ? error.message : String(error),
+    }, { status: 500 });
   }
 }
 
@@ -101,8 +104,7 @@ export async function DELETE(request: Request) {
     const { searchParams } = new URL(request.url);
     const institutionId = searchParams.get("institutionId");
     if (institutionId) {
-      // Delete all time slots for this institution
-      await db.timeSlot.deleteMany({ where: { institutionId } });
+      await dataStore.timeSlot.deleteMany({ where: { institutionId } });
       return NextResponse.json({ success: true });
     }
 
@@ -110,10 +112,10 @@ export async function DELETE(request: Request) {
     if (!id) {
       return NextResponse.json({ error: "ID ou institutionId requis" }, { status: 400 });
     }
-    await db.timeSlot.delete({ where: { id } });
+    await dataStore.timeSlot.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error(error);
+    console.error("DELETE /api/timeslots error:", error);
     return NextResponse.json({ error: "Erreur lors de la suppression du créneau" }, { status: 500 });
   }
 }
