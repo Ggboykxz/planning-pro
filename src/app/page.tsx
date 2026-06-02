@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useAppStore, sectionToPath } from "@/lib/store";
+import { useAppStore } from "@/lib/store";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 
 interface InstitutionData {
@@ -18,10 +18,19 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [onboardingLoading, setOnboardingLoading] = useState(false);
   const router = useRouter();
+  const hasRedirected = useRef(false);
 
   useEffect(() => {
+    // If institutionId is already in store (from previous session), redirect immediately
+    if (institutionId && !hasRedirected.current) {
+      hasRedirected.current = true;
+      router.replace("/dashboard");
+      setLoading(false);
+      return;
+    }
+
     checkInstitution();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const checkInstitution = async () => {
     try {
@@ -33,7 +42,10 @@ export default function HomePage() {
           setInstitution(inst);
           setInstitutionId(inst.id);
           // Redirect to dashboard if institution exists
-          router.replace("/dashboard");
+          if (!hasRedirected.current) {
+            hasRedirected.current = true;
+            router.replace("/dashboard");
+          }
         }
       }
     } catch (error) {

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { useAppStore, sectionToPath, pathToSection, type AppSection } from "@/lib/store";
+import { useEffect, useState, useRef } from "react";
+import { usePathname } from "next/navigation";
+import { useAppStore, pathToSection, type AppSection } from "@/lib/store";
 import { TopNav } from "@/components/layout/TopNav";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { CommandPalette } from "@/components/shared/CommandPalette";
@@ -26,12 +26,21 @@ const sectionShortcuts: Record<string, AppSection> = {
   "7": "settings",
 };
 
+const sectionToPath: Record<AppSection, string> = {
+  dashboard: "/dashboard",
+  timetable: "/timetable",
+  teachers: "/teachers",
+  rooms: "/rooms",
+  subjects: "/subjects",
+  classes: "/classes",
+  settings: "/settings",
+};
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { currentSection, institutionId, setInstitutionId, setCurrentSection } = useAppStore();
   const [institution, setInstitution] = useState<InstitutionData | null>(null);
   const [loading, setLoading] = useState(true);
   const pathname = usePathname();
-  const router = useRouter();
 
   // Sync URL -> store on pathname change
   useEffect(() => {
@@ -41,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, setCurrentSection]);
 
-  // Load institution on mount
+  // Load institution on mount - only once
   const institutionLoaded = useRef(false);
   useEffect(() => {
     if (institutionLoaded.current) return;
@@ -68,15 +77,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     loadInstitution();
   }, [setInstitutionId]);
 
-  // Also re-read institution from store if already loaded
+  // If institutionId exists in store but we don't have institution data, fetch it
   useEffect(() => {
-    if (institutionId && !institution) {
+    if (institutionId && !institution && institutionLoaded.current) {
       fetch("/api/institution")
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) throw new Error("Failed to fetch institution");
+          return res.json();
+        })
         .then((data) => {
           if (data.length > 0) {
-            const inst = data[0];
-            setInstitution(inst);
+            setInstitution(data[0]);
           }
         })
         .catch(console.error);
@@ -93,7 +104,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         const section = sectionShortcuts[e.key];
         if (section) {
           e.preventDefault();
-          router.push(sectionToPath[section]);
+          window.location.href = sectionToPath[section];
           return;
         }
       }
@@ -110,7 +121,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [router]);
+  }, []);
 
   // Loading state
   if (loading || !institutionId || !institution) {

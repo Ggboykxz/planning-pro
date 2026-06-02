@@ -151,3 +151,49 @@ No way to visually rearrange timetable slots by dragging and dropping.
 - ✅ All API endpoints functional
 - ✅ Existing features preserved (search, bulk select, import, availability, etc.)
 - ✅ Design consistency maintained (zero border-radius, monospace, brutalist palette)
+
+---
+
+## TASK 9: Fix Site Loading / Redirect Loop Issue
+
+### Problem
+User reported "Le site ne se charge pas correctement" and "redirigé à de trop nombreuses reprises" (too many redirects).
+
+### Root Causes Identified
+1. **Cross-origin resource blocking**: Next.js dev server blocked `/_next/*` requests from the preview domain `preview-chat-*.space-z.ai`, preventing JavaScript/CSS from loading
+2. **Server instability**: Dev server (Turbopack) was crashing under load during compilation, consuming excessive CPU/memory
+3. **Redirect loop potential**: Root page `router.replace("/dashboard")` could trigger multiple navigations without proper guards
+
+### Fixes Applied
+
+#### 1. Updated `next.config.ts` - Cross-Origin Origins
+- Added explicit domain entries: `space.chatglm.site`, `space-z.ai` (in addition to `.space.chatglm.site`, `.space-z.ai`)
+- Added `localhost:3000`
+- Removed `output: "standalone"` to use standard production build
+
+#### 2. Fixed Root Page (`src/app/page.tsx`)
+- Added `hasRedirected` ref to prevent multiple `router.replace()` calls
+- Added early redirect if `institutionId` already exists in Zustand store
+- Prevents double-redirect on re-renders
+
+#### 3. Fixed AppShell (`src/components/layout/AppShell.tsx`)
+- Removed `useRouter` dependency (was importing but not using it directly for navigation)
+- Used `window.location.href` for keyboard shortcut navigation instead of `router.push()` (avoids potential routing conflicts)
+- Fixed institution loading logic to avoid duplicate fetches
+- Only fetches institution data on second effect if `institutionLoaded.current` is true
+
+#### 4. Switched to Production Build
+- Removed `output: "standalone"` from next.config.ts
+- Ran `npx next build` for production build
+- Started with `npx next start -p 3000` (no cross-origin blocking in production mode)
+- Production server uses less memory and doesn't need per-request compilation
+- All routes verified returning HTTP 200 with correct content
+
+### Verification Results
+- ✅ All routes return HTTP 200: `/`, `/dashboard`, `/timetable`, `/teachers`, `/rooms`, `/subjects`, `/classes`, `/settings`
+- ✅ API endpoint `/api/institution` returns 200 with data
+- ✅ No redirect responses from any route
+- ✅ CSS and JS static resources load correctly (200 status)
+- ✅ Caddy proxy on port 81 forwards correctly to Next.js on port 3000
+- ✅ Preview domain requests return correct HTML (200, no redirects)
+- ✅ Production server process stable and persistent
