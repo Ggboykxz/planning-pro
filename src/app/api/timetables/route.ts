@@ -1,5 +1,271 @@
-import { db } from "@/lib/db";
+import { dataStore, isDatabaseAvailable } from "@/lib/data-store";
 import { NextResponse } from "next/server";
+
+// Helper: Enrich a single slot with subject/teacher/room data (for fallback mode)
+async function enrichSlot(slot: Record<string, unknown>) {
+  const dbAvailable = await isDatabaseAvailable();
+  if (dbAvailable) {
+    // When DB is available, dataStore methods already include relations via Prisma
+    return slot;
+  }
+
+  const subjects = await dataStore.subject.findMany();
+  const teachers = await dataStore.teacher.findMany();
+  const rooms = await dataStore.room.findMany();
+
+  return {
+    ...slot,
+    subject: slot.subjectId
+      ? subjects.find((s) => s.id === slot.subjectId) || null
+      : null,
+    teacher: slot.teacherId
+      ? teachers.find((t) => t.id === slot.teacherId) || null
+      : null,
+    room: slot.roomId
+      ? rooms.find((r) => r.id === slot.roomId) || null
+      : null,
+  };
+}
+
+// Helper: Enrich an array of slots
+async function enrichSlots(slots: Record<string, unknown>[]) {
+  const dbAvailable = await isDatabaseAvailable();
+  if (dbAvailable) {
+    // When DB is available, dataStore methods already include relations via Prisma
+    return slots;
+  }
+
+  if (slots.length === 0) return slots;
+
+  const subjects = await dataStore.subject.findMany();
+  const teachers = await dataStore.teacher.findMany();
+  const rooms = await dataStore.room.findMany();
+
+  return slots.map((slot) => ({
+    ...slot,
+    subject: slot.subjectId
+      ? subjects.find((s) => s.id === slot.subjectId) || null
+      : null,
+    teacher: slot.teacherId
+      ? teachers.find((t) => t.id === slot.teacherId) || null
+      : null,
+    room: slot.roomId
+      ? rooms.find((r) => r.id === slot.roomId) || null
+      : null,
+  }));
+}
+
+// Helper: Sort slots by dayOfWeek then startTime
+function sortSlots(slots: Record<string, unknown>[]) {
+  return slots.sort((a, b) => {
+    const dayA = (a.dayOfWeek as number) ?? 0;
+    const dayB = (b.dayOfWeek as number) ?? 0;
+    if (dayA !== dayB) return dayA - dayB;
+    return String(a.startTime ?? "").localeCompare(String(b.startTime ?? ""));
+  });
+}
+
+// Helper: Detect conflicts for a slot (teacher/room double-booking)
+async function detectSlotConflicts(
+  slot: { teacherId?: string | null; roomId?: string | null; dayOfWeek: number; startTime: string; endTime: string; id: string }
+): Promise<string[]> {
+  const conflicts: string[] = [];
+
+  if (slot.teacherId) {
+    const teacherSlots = await dataStore.timetableSlot.findMany({
+      where: {
+        teacherId: slot.teacherId,
+        dayOfWeek: slot.dayOfWeek,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        id: { not: slot.id },
+      },
+      include: { timetable: { include: { class: true } } },
+    });
+
+    const teacherConflicts = Array.isArray(teacherSlots) ? teacherSlots : [];
+    if (teacherConflicts.length > 0) {
+      const classNames = teacherConflicts.map((s: Record<string, unknown>) => {
+        const tt = s.timetable as Record<string, unknown> | null;
+        const cls = tt?.class as Record<string, unknown> | null;
+        return (cls?.name as string) || "inconnu";
+      });
+      conflicts.push(
+        `Enseignant déjà assigné: ${classNames.join(", ")}`
+      );
+    }
+  }
+
+  if (slot.roomId) {
+    const roomSlots = await dataStore.timetableSlot.findMany({
+      where: {
+        roomId: slot.roomId,
+        dayOfWeek: slot.dayOfWeek,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        id: { not: slot.id },
+      },
+      include: { timetable: { include: { class: true } } },
+    });
+
+    const roomConflicts = Array.isArray(roomSlots) ? roomSlots : [];
+    if (roomConflicts.length > 0) {
+      const classNames = roomConflicts.map((s: Record<string, unknown>) => {
+        const tt = s.timetable as Record<string, unknown> | null;
+        const cls = tt?.class as Record<string, unknown> | null;
+        return (cls?.name as string) || "inconnu";
+      });
+      conflicts.push(
+        `Salle déjà occupée: ${classNames.join(", ")}`
+      );
+    }
+  }
+
+  return conflicts;
+}
+
+// Helper: Build a timetable with slots, class, and slot count for the institution list
+async function buildTimetableList(institutionId: string) {
+  const timetables = await dataStore.timetable.findMany({
+    where: { institutionId },
+    include: {
+      class: true,
+      _count: { select: { slots: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  return timetables;
+}
+
+// Helper: Build a full timetable response with enriched slots and class
+async function buildFullTimetable(timetableId: string) {
+  const timetable = await dataStore.timetable.findUnique({
+    where: { id: timetableId },
+    include: {
+      slots: {
+        include: {
+          subject: true,
+          teacher: true,
+          room: true,
+        },
+        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+      },
+      class: true,
+    },
+  });
+  return timetable;
+}
+
+// Helper: Build timetable by class (active)
+async function buildTimetableByClass(classId: string) {
+  const timetable = await dataStore.timetable.findFirst({
+    where: { classId, isActive: true },
+    include: {
+      slots: {
+        include: {
+          subject: true,
+          teacher: true,
+          room: true,
+        },
+        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+      },
+      class: true,
+    },
+  });
+  return timetable;
+}
+
+// Helper: Build teacher timetable view
+async function buildTeacherTimetable(teacherId: string) {
+  const teacher = await dataStore.teacher.findUnique({
+    where: { id: teacherId },
+    select: { firstName: true, lastName: true },
+  });
+
+  if (!teacher) return null;
+
+  const slots = await dataStore.timetableSlot.findMany({
+    where: { teacherId },
+    include: {
+      subject: true,
+      teacher: true,
+      room: true,
+      timetable: {
+        include: { class: true },
+      },
+    },
+    orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+  });
+
+  const enrichedSlots = await enrichSlots(slots as unknown as Record<string, unknown>[]);
+
+  const timetable = {
+    id: `teacher-${teacherId}`,
+    name: `Emploi du temps - ${teacher.firstName} ${teacher.lastName}`,
+    class: { id: teacherId, name: `${teacher.firstName} ${teacher.lastName}` },
+    slots: (Array.isArray(enrichedSlots) ? enrichedSlots : []).map((s: Record<string, unknown>) => {
+      const tt = s.timetable as Record<string, unknown> | null;
+      const cls = tt?.class as Record<string, unknown> | null;
+      return {
+        id: s.id,
+        dayOfWeek: s.dayOfWeek,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        subject: s.subject,
+        teacher: s.teacher,
+        room: s.room,
+        className: cls?.name || "",
+      };
+    }),
+  };
+  return timetable;
+}
+
+// Helper: Build room timetable view
+async function buildRoomTimetable(roomId: string) {
+  const room = await dataStore.room.findUnique({
+    where: { id: roomId },
+    select: { name: true },
+  });
+
+  if (!room) return null;
+
+  const slots = await dataStore.timetableSlot.findMany({
+    where: { roomId },
+    include: {
+      subject: true,
+      teacher: true,
+      room: true,
+      timetable: {
+        include: { class: true },
+      },
+    },
+    orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+  });
+
+  const enrichedSlots = await enrichSlots(slots as unknown as Record<string, unknown>[]);
+
+  const timetable = {
+    id: `room-${roomId}`,
+    name: `Emploi du temps - ${room.name}`,
+    class: { id: roomId, name: room.name },
+    slots: (Array.isArray(enrichedSlots) ? enrichedSlots : []).map((s: Record<string, unknown>) => {
+      const tt = s.timetable as Record<string, unknown> | null;
+      const cls = tt?.class as Record<string, unknown> | null;
+      return {
+        id: s.id,
+        dayOfWeek: s.dayOfWeek,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        subject: s.subject,
+        teacher: s.teacher,
+        room: s.room,
+        className: cls?.name || "",
+      };
+    }),
+  };
+  return timetable;
+}
 
 export async function GET(request: Request) {
   try {
@@ -12,124 +278,31 @@ export async function GET(request: Request) {
 
     // Get specific timetable by ID
     if (timetableId) {
-      const timetable = await db.timetable.findUnique({
-        where: { id: timetableId },
-        include: {
-          slots: {
-            include: {
-              subject: true,
-              teacher: true,
-              room: true,
-            },
-            orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
-          },
-          class: true,
-        },
-      });
+      const timetable = await buildFullTimetable(timetableId);
       return NextResponse.json(timetable);
     }
 
     // Get timetable by class
     if (classId) {
-      const timetable = await db.timetable.findFirst({
-        where: { classId, isActive: true },
-        include: {
-          slots: {
-            include: {
-              subject: true,
-              teacher: true,
-              room: true,
-            },
-            orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
-          },
-          class: true,
-        },
-      });
+      const timetable = await buildTimetableByClass(classId);
       return NextResponse.json(timetable);
     }
 
-    // Get timetable by teacher - gather all slots for this teacher across all timetables
+    // Get timetable by teacher
     if (teacherId) {
-      const teacher = await db.teacher.findUnique({
-        where: { id: teacherId },
-        select: { firstName: true, lastName: true },
-      });
-
-      if (!teacher) {
+      const timetable = await buildTeacherTimetable(teacherId);
+      if (!timetable) {
         return NextResponse.json({ error: "Enseignant non trouve" }, { status: 404 });
       }
-
-      const slots = await db.timetableSlot.findMany({
-        where: { teacherId },
-        include: {
-          subject: true,
-          teacher: true,
-          room: true,
-          timetable: {
-            include: { class: true },
-          },
-        },
-        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
-      });
-
-      // Format as a timetable-like structure
-      const timetable = {
-        id: `teacher-${teacherId}`,
-        name: `Emploi du temps - ${teacher.firstName} ${teacher.lastName}`,
-        class: { id: teacherId, name: `${teacher.firstName} ${teacher.lastName}` },
-        slots: slots.map((s) => ({
-          id: s.id,
-          dayOfWeek: s.dayOfWeek,
-          startTime: s.startTime,
-          endTime: s.endTime,
-          subject: s.subject,
-          teacher: s.teacher,
-          room: s.room,
-          className: s.timetable?.class?.name || "",
-        })),
-      };
       return NextResponse.json(timetable);
     }
 
-    // Get timetable by room - gather all slots for this room across all timetables
+    // Get timetable by room
     if (roomId) {
-      const room = await db.room.findUnique({
-        where: { id: roomId },
-        select: { name: true },
-      });
-
-      if (!room) {
+      const timetable = await buildRoomTimetable(roomId);
+      if (!timetable) {
         return NextResponse.json({ error: "Salle non trouvee" }, { status: 404 });
       }
-
-      const slots = await db.timetableSlot.findMany({
-        where: { roomId },
-        include: {
-          subject: true,
-          teacher: true,
-          room: true,
-          timetable: {
-            include: { class: true },
-          },
-        },
-        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
-      });
-
-      const timetable = {
-        id: `room-${roomId}`,
-        name: `Emploi du temps - ${room.name}`,
-        class: { id: roomId, name: room.name },
-        slots: slots.map((s) => ({
-          id: s.id,
-          dayOfWeek: s.dayOfWeek,
-          startTime: s.startTime,
-          endTime: s.endTime,
-          subject: s.subject,
-          teacher: s.teacher,
-          room: s.room,
-          className: s.timetable?.class?.name || "",
-        })),
-      };
       return NextResponse.json(timetable);
     }
 
@@ -137,14 +310,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "institutionId, classId, teacherId ou roomId requis" }, { status: 400 });
     }
 
-    const timetables = await db.timetable.findMany({
-      where: { institutionId },
-      include: {
-        class: true,
-        _count: { select: { slots: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    const timetables = await buildTimetableList(institutionId);
     return NextResponse.json(timetables);
   } catch (error) {
     console.error(error);
@@ -158,13 +324,13 @@ export async function POST(request: Request) {
 
     // Deactivate existing timetables for this class
     if (body.classId) {
-      await db.timetable.updateMany({
+      await dataStore.timetable.updateMany({
         where: { classId: body.classId, isActive: true },
         data: { isActive: false },
       });
     }
 
-    const timetable = await db.timetable.create({
+    const timetable = await dataStore.timetable.create({
       data: {
         institutionId: body.institutionId,
         classId: body.classId,
@@ -180,7 +346,7 @@ export async function POST(request: Request) {
     // Create slots if provided
     if (body.slots && Array.isArray(body.slots)) {
       for (const slot of body.slots) {
-        await db.timetableSlot.create({
+        await dataStore.timetableSlot.create({
           data: {
             timetableId: timetable.id,
             timeSlotId: slot.timeSlotId,
@@ -216,7 +382,7 @@ export async function PUT(request: Request) {
       if (body.startTime !== undefined) updateData.startTime = body.startTime;
       if (body.endTime !== undefined) updateData.endTime = body.endTime;
 
-      const slot = await db.timetableSlot.update({
+      const slot = await dataStore.timetableSlot.update({
         where: { id: slotId },
         data: updateData,
         include: {
@@ -227,50 +393,21 @@ export async function PUT(request: Request) {
       });
 
       // Conflict detection: check if the move creates teacher or room conflicts
-      const conflicts: string[] = [];
-
-      if (slot.teacherId) {
-        const teacherSlots = await db.timetableSlot.findMany({
-          where: {
-            teacherId: slot.teacherId,
-            dayOfWeek: slot.dayOfWeek,
-            startTime: slot.startTime,
-            endTime: slot.endTime,
-            id: { not: slot.id },
-          },
-          include: { timetable: { include: { class: true } } },
-        });
-        if (teacherSlots.length > 0) {
-          conflicts.push(
-            `Enseignant déjà assigné: ${teacherSlots.map(s => s.timetable?.class?.name || "inconnu").join(", ")}`
-          );
-        }
-      }
-
-      if (slot.roomId) {
-        const roomSlots = await db.timetableSlot.findMany({
-          where: {
-            roomId: slot.roomId,
-            dayOfWeek: slot.dayOfWeek,
-            startTime: slot.startTime,
-            endTime: slot.endTime,
-            id: { not: slot.id },
-          },
-          include: { timetable: { include: { class: true } } },
-        });
-        if (roomSlots.length > 0) {
-          conflicts.push(
-            `Salle déjà occupée: ${roomSlots.map(s => s.timetable?.class?.name || "inconnu").join(", ")}`
-          );
-        }
-      }
+      const conflicts = await detectSlotConflicts({
+        teacherId: slot.teacherId as string | null,
+        roomId: slot.roomId as string | null,
+        dayOfWeek: slot.dayOfWeek as number,
+        startTime: slot.startTime as string,
+        endTime: slot.endTime as string,
+        id: slot.id as string,
+      });
 
       return NextResponse.json({ slot, conflicts });
     }
 
     // Add a single slot to an existing timetable (without replacing all slots)
     if (body.addSlot && body.timetableId) {
-      const newSlot = await db.timetableSlot.create({
+      const newSlot = await dataStore.timetableSlot.create({
         data: {
           timetableId: body.timetableId,
           timeSlotId: body.addSlot.timeSlotId || null,
@@ -289,43 +426,14 @@ export async function PUT(request: Request) {
       });
 
       // Conflict detection for new slot
-      const conflicts: string[] = [];
-
-      if (newSlot.teacherId) {
-        const teacherSlots = await db.timetableSlot.findMany({
-          where: {
-            teacherId: newSlot.teacherId,
-            dayOfWeek: newSlot.dayOfWeek,
-            startTime: newSlot.startTime,
-            endTime: newSlot.endTime,
-            id: { not: newSlot.id },
-          },
-          include: { timetable: { include: { class: true } } },
-        });
-        if (teacherSlots.length > 0) {
-          conflicts.push(
-            `Enseignant déjà assigné: ${teacherSlots.map(s => s.timetable?.class?.name || "inconnu").join(", ")}`
-          );
-        }
-      }
-
-      if (newSlot.roomId) {
-        const roomSlots = await db.timetableSlot.findMany({
-          where: {
-            roomId: newSlot.roomId,
-            dayOfWeek: newSlot.dayOfWeek,
-            startTime: newSlot.startTime,
-            endTime: newSlot.endTime,
-            id: { not: newSlot.id },
-          },
-          include: { timetable: { include: { class: true } } },
-        });
-        if (roomSlots.length > 0) {
-          conflicts.push(
-            `Salle déjà occupée: ${roomSlots.map(s => s.timetable?.class?.name || "inconnu").join(", ")}`
-          );
-        }
-      }
+      const conflicts = await detectSlotConflicts({
+        teacherId: newSlot.teacherId as string | null,
+        roomId: newSlot.roomId as string | null,
+        dayOfWeek: newSlot.dayOfWeek as number,
+        startTime: newSlot.startTime as string,
+        endTime: newSlot.endTime as string,
+        id: newSlot.id as string,
+      });
 
       return NextResponse.json({ slot: newSlot, conflicts });
     }
@@ -335,16 +443,16 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "ID, slotId ou addSlot requis" }, { status: 400 });
     }
 
-    const timetable = await db.timetable.update({
+    const timetable = await dataStore.timetable.update({
       where: { id },
       data,
     });
 
     // Update slots if provided
     if (slots && Array.isArray(slots)) {
-      await db.timetableSlot.deleteMany({ where: { timetableId: id } });
+      await dataStore.timetableSlot.deleteMany({ where: { timetableId: id } });
       for (const slot of slots) {
-        await db.timetableSlot.create({
+        await dataStore.timetableSlot.create({
           data: {
             timetableId: id,
             timeSlotId: slot.timeSlotId,
@@ -368,7 +476,6 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const body = await request.json ? {} : {};
     let slotId: string | null = null;
     let id: string | null = null;
 
@@ -383,7 +490,7 @@ export async function DELETE(request: Request) {
 
     // Delete single slot
     if (slotId) {
-      await db.timetableSlot.delete({ where: { id: slotId } });
+      await dataStore.timetableSlot.delete({ where: { id: slotId } });
       return NextResponse.json({ success: true });
     }
 
@@ -393,7 +500,7 @@ export async function DELETE(request: Request) {
     if (!id) {
       return NextResponse.json({ error: "ID ou slotId requis" }, { status: 400 });
     }
-    await db.timetable.delete({ where: { id } });
+    await dataStore.timetable.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error(error);

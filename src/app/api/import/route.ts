@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { dataStore, isDatabaseAvailable } from "@/lib/data-store";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
@@ -14,13 +14,94 @@ export async function POST(request: Request) {
     }
 
     let created = 0;
+    const dbAvailable = await isDatabaseAvailable();
 
-    await db.$transaction(async (tx) => {
+    if (dbAvailable) {
+      // Use Prisma transaction for atomic operations
+      const { db } = await import("@/lib/db");
+      await db.$transaction(async (tx) => {
+        switch (type) {
+          case "teachers": {
+            for (const item of data) {
+              if (!item.firstName || !item.lastName) continue;
+              await tx.teacher.create({
+                data: {
+                  institutionId,
+                  firstName: item.firstName,
+                  lastName: item.lastName,
+                  email: item.email || null,
+                  phone: item.phone || null,
+                  specialization: item.specialization || null,
+                  maxHoursPerWeek: item.maxHoursPerWeek || null,
+                },
+              });
+              created++;
+            }
+            break;
+          }
+          case "rooms": {
+            for (const item of data) {
+              if (!item.name) continue;
+              await tx.room.create({
+                data: {
+                  institutionId,
+                  name: item.name,
+                  capacity: item.capacity || null,
+                  type: item.type || null,
+                  building: item.building || null,
+                  floor: item.floor || null,
+                },
+              });
+              created++;
+            }
+            break;
+          }
+          case "subjects": {
+            for (const item of data) {
+              if (!item.name) continue;
+              await tx.subject.create({
+                data: {
+                  institutionId,
+                  name: item.name,
+                  code: item.code || null,
+                  hoursPerWeek: item.hoursPerWeek || null,
+                  type: item.type || null,
+                  semester: item.semester || null,
+                  coefficient: item.coefficient || null,
+                },
+              });
+              created++;
+            }
+            break;
+          }
+          case "classes": {
+            for (const item of data) {
+              if (!item.name) continue;
+              await tx.class.create({
+                data: {
+                  institutionId,
+                  name: item.name,
+                  level: item.level || null,
+                  department: item.department || null,
+                  studentCount: item.studentCount || null,
+                  academicYear: item.academicYear || null,
+                },
+              });
+              created++;
+            }
+            break;
+          }
+          default:
+            throw new Error(`Type inconnu: ${type}`);
+        }
+      });
+    } else {
+      // Use dataStore directly (in-memory, no transaction needed)
       switch (type) {
         case "teachers": {
           for (const item of data) {
             if (!item.firstName || !item.lastName) continue;
-            await tx.teacher.create({
+            await dataStore.teacher.create({
               data: {
                 institutionId,
                 firstName: item.firstName,
@@ -38,7 +119,7 @@ export async function POST(request: Request) {
         case "rooms": {
           for (const item of data) {
             if (!item.name) continue;
-            await tx.room.create({
+            await dataStore.room.create({
               data: {
                 institutionId,
                 name: item.name,
@@ -55,7 +136,7 @@ export async function POST(request: Request) {
         case "subjects": {
           for (const item of data) {
             if (!item.name) continue;
-            await tx.subject.create({
+            await dataStore.subject.create({
               data: {
                 institutionId,
                 name: item.name,
@@ -73,7 +154,7 @@ export async function POST(request: Request) {
         case "classes": {
           for (const item of data) {
             if (!item.name) continue;
-            await tx.class.create({
+            await dataStore.class.create({
               data: {
                 institutionId,
                 name: item.name,
@@ -90,7 +171,7 @@ export async function POST(request: Request) {
         default:
           throw new Error(`Type inconnu: ${type}`);
       }
-    });
+    }
 
     return NextResponse.json({ created });
   } catch (error) {

@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { dataStore, isDatabaseAvailable } from "@/lib/data-store";
 import { generateTimeSlots, generateTimetableAdvanced, type GenerationInput } from "@/lib/schedule-utils";
 import { NextResponse } from "next/server";
 
@@ -12,13 +12,13 @@ export async function POST(request: Request) {
     }
 
     // Get institution config
-    const institution = await db.institution.findUnique({ where: { id: institutionId } });
+    const institution = await dataStore.institution.findUnique({ where: { id: institutionId } });
     if (!institution) {
       return NextResponse.json({ error: "Institution non trouvée" }, { status: 404 });
     }
 
     // Get class with subjects
-    const cls = await db.class.findUnique({
+    const cls = await dataStore.class.findUnique({
       where: { id: classId },
       include: {
         subjects: { include: { subject: true } },
@@ -29,35 +29,43 @@ export async function POST(request: Request) {
     }
 
     // Get subjects for this class
-    const subjects = cls.subjects.map((cs) => ({
-      id: cs.subject.id,
-      name: cs.subject.name,
-      hoursPerWeek: cs.hoursPerWeek || cs.subject.hoursPerWeek || 2,
-      type: cs.subject.type || "cours",
-    }));
+    const subjects = (cls.subjects as unknown as Array<Record<string, unknown>>).map((cs) => {
+      const subject = cs.subject as Record<string, unknown>;
+      return {
+        id: subject.id as string,
+        name: subject.name as string,
+        hoursPerWeek: (cs.hoursPerWeek as number) || (subject.hoursPerWeek as number) || 2,
+        type: (subject.type as string) || "cours",
+      };
+    });
 
     // Get teachers with their subject assignments
-    const allTeachers = await db.teacher.findMany({
+    const allTeachers = await dataStore.teacher.findMany({
       where: { institutionId },
       include: { subjectAssignments: true },
     });
 
-    const teachers = allTeachers.map((t) => ({
-      id: t.id,
-      firstName: t.firstName,
-      lastName: t.lastName,
-      subjectIds: t.subjectAssignments.map((sa) => sa.subjectId),
-      maxHoursPerWeek: t.maxHoursPerWeek || 30,
-      unavailableSlots: t.unavailableSlots || undefined,
-    }));
+    const teachers = (Array.isArray(allTeachers) ? allTeachers : []).map((t: Record<string, unknown>) => {
+      const subjectAssignments = (t.subjectAssignments as Array<Record<string, unknown>>) || [];
+      return {
+        id: t.id as string,
+        firstName: t.firstName as string,
+        lastName: t.lastName as string,
+        subjectIds: subjectAssignments.map((sa) => sa.subjectId as string),
+        maxHoursPerWeek: (t.maxHoursPerWeek as number) || 30,
+        unavailableSlots: t.unavailableSlots
+          ? (typeof t.unavailableSlots === "string" ? t.unavailableSlots : JSON.stringify(t.unavailableSlots))
+          : undefined,
+      };
+    });
 
     // Get rooms
-    const allRooms = await db.room.findMany({ where: { institutionId } });
-    const rooms = allRooms.map((r) => ({
-      id: r.id,
-      name: r.name,
-      type: r.type || "salle_normale",
-      capacity: r.capacity || 30,
+    const allRooms = await dataStore.room.findMany({ where: { institutionId } });
+    const rooms = (Array.isArray(allRooms) ? allRooms : []).map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      name: r.name as string,
+      type: (r.type as string) || "salle_normale",
+      capacity: (r.capacity as number) || 30,
     }));
 
     // Generate time slots from institution config
@@ -72,7 +80,7 @@ export async function POST(request: Request) {
     );
 
     // Get existing occupied slots from other classes' timetables
-    const otherTimetables = await db.timetable.findMany({
+    const otherTimetables = await dataStore.timetable.findMany({
       where: {
         institutionId,
         classId: { not: classId },
@@ -81,31 +89,32 @@ export async function POST(request: Request) {
       include: { slots: true },
     });
 
-    const existingSlots = otherTimetables.flatMap((tt) =>
-      tt.slots.map((s) => ({
-        teacherId: s.teacherId,
-        roomId: s.roomId,
-        dayOfWeek: s.dayOfWeek,
-        startTime: s.startTime,
-        endTime: s.endTime,
-      }))
-    );
+    const existingSlots = (Array.isArray(otherTimetables) ? otherTimetables : []).flatMap((tt: Record<string, unknown>) => {
+      const ttSlots = (tt.slots as Array<Record<string, unknown>>) || [];
+      return ttSlots.map((s: Record<string, unknown>) => ({
+        teacherId: s.teacherId as string | null,
+        roomId: s.roomId as string | null,
+        dayOfWeek: s.dayOfWeek as number,
+        startTime: s.startTime as string,
+        endTime: s.endTime as string,
+      }));
+    });
 
     // Get current active timetable for versioning
-    const currentTimetable = await db.timetable.findFirst({
+    const currentTimetable = await dataStore.timetable.findFirst({
       where: { classId, isActive: true },
     });
 
     // Generate timetable using advanced algorithm
     const result = generateTimetableAdvanced({
       classId,
-      className: cls.name,
+      className: (cls as Record<string, unknown>).name as string,
       subjects,
       teachers,
       rooms,
       availableSlots,
       existingSlots,
-      classStudentCount: cls.studentCount || undefined,
+      classStudentCount: ((cls as Record<string, unknown>).studentCount as number) || undefined,
     });
 
     if (result.slots.length === 0) {
@@ -115,32 +124,32 @@ export async function POST(request: Request) {
     }
 
     // Deactivate existing timetables for this class
-    await db.timetable.updateMany({
+    await dataStore.timetable.updateMany({
       where: { classId, isActive: true },
       data: { isActive: false },
     });
 
     // Create new timetable with version info
-    const newVersion = (currentTimetable?.version || 0) + 1;
+    const newVersion = ((currentTimetable as Record<string, unknown> | null)?.version as number || 0) + 1;
 
-    const timetable = await db.timetable.create({
+    const timetable = await dataStore.timetable.create({
       data: {
         institutionId,
         classId,
-        name: `Emploi du temps ${cls.name}`,
+        name: `Emploi du temps ${(cls as Record<string, unknown>).name}`,
         semester: institution.semesterSystem === "semestriel" ? "S1" : undefined,
         academicYear: institution.academieYear,
         isActive: true,
         version: newVersion,
-        previousVersionId: currentTimetable?.id || null,
+        previousVersionId: (currentTimetable as Record<string, unknown> | null)?.id as string || null,
       },
     });
 
     // Create time slots for institution if they don't exist
-    const existingTimeSlots = await db.timeSlot.findMany({ where: { institutionId } });
+    const existingTimeSlots = await dataStore.timeSlot.findMany({ where: { institutionId } });
     if (existingTimeSlots.length === 0) {
       for (const slot of availableSlots) {
-        await db.timeSlot.create({
+        await dataStore.timeSlot.create({
           data: {
             institutionId,
             dayOfWeek: slot.dayOfWeek,
@@ -154,7 +163,7 @@ export async function POST(request: Request) {
     }
 
     // Get the newly created time slots
-    const dbTimeSlots = await db.timeSlot.findMany({ where: { institutionId } });
+    const dbTimeSlots = await dataStore.timeSlot.findMany({ where: { institutionId } });
 
     // Create timetable slots
     for (const slot of result.slots) {
@@ -162,7 +171,7 @@ export async function POST(request: Request) {
         (ts) => ts.dayOfWeek === slot.dayOfWeek && ts.startTime === slot.startTime
       );
 
-      await db.timetableSlot.create({
+      await dataStore.timetableSlot.create({
         data: {
           timetableId: timetable.id,
           timeSlotId: matchingTimeSlot?.id || null,
@@ -177,7 +186,7 @@ export async function POST(request: Request) {
     }
 
     // Return the complete timetable with score
-    const fullResult = await db.timetable.findUnique({
+    const fullResult = await dataStore.timetable.findUnique({
       where: { id: timetable.id },
       include: {
         slots: {
