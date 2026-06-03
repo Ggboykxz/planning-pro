@@ -268,9 +268,71 @@ export async function PUT(request: Request) {
       return NextResponse.json({ slot, conflicts });
     }
 
+    // Add a single slot to an existing timetable (without replacing all slots)
+    if (body.addSlot && body.timetableId) {
+      const newSlot = await db.timetableSlot.create({
+        data: {
+          timetableId: body.timetableId,
+          timeSlotId: body.addSlot.timeSlotId || null,
+          subjectId: body.addSlot.subjectId || null,
+          teacherId: body.addSlot.teacherId || null,
+          roomId: body.addSlot.roomId || null,
+          dayOfWeek: body.addSlot.dayOfWeek,
+          startTime: body.addSlot.startTime,
+          endTime: body.addSlot.endTime,
+        },
+        include: {
+          subject: true,
+          teacher: true,
+          room: true,
+        },
+      });
+
+      // Conflict detection for new slot
+      const conflicts: string[] = [];
+
+      if (newSlot.teacherId) {
+        const teacherSlots = await db.timetableSlot.findMany({
+          where: {
+            teacherId: newSlot.teacherId,
+            dayOfWeek: newSlot.dayOfWeek,
+            startTime: newSlot.startTime,
+            endTime: newSlot.endTime,
+            id: { not: newSlot.id },
+          },
+          include: { timetable: { include: { class: true } } },
+        });
+        if (teacherSlots.length > 0) {
+          conflicts.push(
+            `Enseignant déjà assigné: ${teacherSlots.map(s => s.timetable?.class?.name || "inconnu").join(", ")}`
+          );
+        }
+      }
+
+      if (newSlot.roomId) {
+        const roomSlots = await db.timetableSlot.findMany({
+          where: {
+            roomId: newSlot.roomId,
+            dayOfWeek: newSlot.dayOfWeek,
+            startTime: newSlot.startTime,
+            endTime: newSlot.endTime,
+            id: { not: newSlot.id },
+          },
+          include: { timetable: { include: { class: true } } },
+        });
+        if (roomSlots.length > 0) {
+          conflicts.push(
+            `Salle déjà occupée: ${roomSlots.map(s => s.timetable?.class?.name || "inconnu").join(", ")}`
+          );
+        }
+      }
+
+      return NextResponse.json({ slot: newSlot, conflicts });
+    }
+
     // Full timetable update
     if (!id) {
-      return NextResponse.json({ error: "ID ou slotId requis" }, { status: 400 });
+      return NextResponse.json({ error: "ID, slotId ou addSlot requis" }, { status: 400 });
     }
 
     const timetable = await db.timetable.update({

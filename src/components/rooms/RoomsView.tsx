@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Upload, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, Download, X, Wrench } from "lucide-react";
 import { roomTypes } from "@/lib/countries";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -35,8 +35,32 @@ interface RoomData {
   type: string | null;
   building: string | null;
   floor: string | null;
+  equipment: string | null;
   timetableSlots: Array<{ id: string }>;
 }
+
+const predefinedEquipment = [
+  "Projecteur",
+  "Tableau blanc",
+  "Tableau noir",
+  "PCs",
+  "Imprimante",
+  "Scanner",
+  "Vidéoprojecteur",
+  "Écran tactile",
+  "Microphone",
+  "Système audio",
+  "Caméra",
+  "Wi-Fi",
+  "Climatisation",
+  "Ventilateurs",
+  "Prises multiples",
+  "Rétroprojecteur",
+  "Labo chimie",
+  "Labo physique",
+  "Labo biologie",
+  "Établis",
+];
 
 interface RoomsViewProps {
   institutionId: string;
@@ -72,6 +96,7 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
     type: "salle_normale",
     building: "",
     floor: "",
+    equipment: [] as string[],
   });
 
   useEffect(() => {
@@ -103,19 +128,28 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
 
   const openCreate = () => {
     setEditingRoom(null);
-    setForm({ name: "", capacity: 30, type: "salle_normale", building: "", floor: "" });
+    setForm({ name: "", capacity: 30, type: "salle_normale", building: "", floor: "", equipment: [] });
     setValidationErrors({});
     setDialogOpen(true);
   };
 
   const openEdit = (room: RoomData) => {
     setEditingRoom(room);
+    let equipment: string[] = [];
+    if (room.equipment) {
+      try {
+        equipment = JSON.parse(room.equipment);
+      } catch {
+        equipment = [];
+      }
+    }
     setForm({
       name: room.name,
       capacity: room.capacity || 30,
       type: room.type || "salle_normale",
       building: room.building || "",
       floor: room.floor || "",
+      equipment,
     });
     setValidationErrors({});
     setDialogOpen(true);
@@ -139,6 +173,7 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
         capacity: form.capacity || null,
         building: form.building || null,
         floor: form.floor || null,
+        equipment: form.equipment.length > 0 ? form.equipment : null,
       };
       const res = await fetch("/api/rooms", {
         method: editingRoom ? "PUT" : "POST",
@@ -202,6 +237,31 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
 
   const getRoomTypeLabel = (type: string | null) => {
     return roomTypes.find((rt) => rt.value === type)?.label || type || "—";
+  };
+
+  const toggleEquipment = (item: string) => {
+    setForm((prev) => ({
+      ...prev,
+      equipment: prev.equipment.includes(item)
+        ? prev.equipment.filter((e) => e !== item)
+        : [...prev.equipment, item],
+    }));
+  };
+
+  const removeEquipment = (item: string) => {
+    setForm((prev) => ({
+      ...prev,
+      equipment: prev.equipment.filter((e) => e !== item),
+    }));
+  };
+
+  const getEquipmentList = (equipment: string | null): string[] => {
+    if (!equipment) return [];
+    try {
+      return JSON.parse(equipment);
+    } catch {
+      return [];
+    }
   };
 
   const toggleSelect = (id: string) => {
@@ -346,6 +406,7 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Capacité</th>
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Bâtiment</th>
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Étage</th>
+                <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Équipement</th>
                 <th className="p-2 text-xs font-bold text-left text-[#201D1D] dark:text-[#FDFCFC]">Utilisation</th>
                 <th className="p-2 text-xs font-bold text-right text-[#201D1D] dark:text-[#FDFCFC]">Actions</th>
               </tr>
@@ -371,6 +432,18 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
                     <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">{room.capacity || "—"}</td>
                     <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">{room.building || "—"}</td>
                     <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">{room.floor || "—"}</td>
+                    <td className="p-2">
+                      <div className="flex flex-wrap gap-0.5">
+                        {getEquipmentList(room.equipment).map((eq) => (
+                          <span key={eq} className="text-[9px] px-1 py-0.5 border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#646262] dark:text-[#9A9898]">
+                            {eq}
+                          </span>
+                        ))}
+                        {getEquipmentList(room.equipment).length === 0 && (
+                          <span className="text-xs text-[#9A9898]">—</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-2 text-xs text-[#646262] dark:text-[#9A9898]">
                       {usedSlots} créneau{usedSlots !== 1 ? "x" : ""}
                     </td>
@@ -474,6 +547,48 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
                   placeholder="Ex: RDC, 1er"
                   className="mt-1"
                 />
+              </div>
+            </div>
+            {/* Equipment Section */}
+            <div>
+              <Label className="text-xs font-bold flex items-center gap-1 mb-2">
+                <Wrench className="h-3 w-3" />
+                Équipement
+              </Label>
+              {/* Selected equipment tags */}
+              {form.equipment.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {form.equipment.map((eq) => (
+                    <span
+                      key={eq}
+                      className="text-[10px] px-1.5 py-0.5 border border-[#201D1D] dark:border-[#FDFCFC] bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] font-bold flex items-center gap-1"
+                    >
+                      {eq}
+                      <button
+                        type="button"
+                        onClick={() => removeEquipment(eq)}
+                        className="hover:opacity-70"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* Predefined suggestions */}
+              <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                {predefinedEquipment
+                  .filter((item) => !form.equipment.includes(item))
+                  .map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => toggleEquipment(item)}
+                      className="text-[10px] px-1.5 py-0.5 border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#646262] dark:text-[#9A9898] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                    >
+                      + {item}
+                    </button>
+                  ))}
               </div>
             </div>
           </div>

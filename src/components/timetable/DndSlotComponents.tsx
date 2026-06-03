@@ -56,9 +56,10 @@ interface DroppableCellProps {
   };
   children: React.ReactNode;
   isOver?: boolean;
+  onClick?: () => void;
 }
 
-export function DroppableCell({ id, data, children, isOver }: DroppableCellProps) {
+export function DroppableCell({ id, data, children, isOver, onClick }: DroppableCellProps) {
   const { setNodeRef, isOver: isActiveOver } = useDroppable({
     id,
     data,
@@ -67,8 +68,10 @@ export function DroppableCell({ id, data, children, isOver }: DroppableCellProps
   return (
     <div
       ref={setNodeRef}
+      onClick={onClick}
       className={cn(
         "h-full min-h-[60px] transition-colors duration-150",
+        onClick && "cursor-pointer hover:bg-[#201D1D]/[0.03] dark:hover:bg-[#FDFCFC]/[0.03]",
         isActiveOver && "bg-[#201D1D]/5 dark:bg-[#FDFCFC]/5 ring-1 ring-inset ring-[#201D1D]/20 dark:ring-[#FDFCFC]/20"
       )}
     >

@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Save, Trash2, AlertTriangle, ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
+import { Save, Trash2, AlertTriangle, ChevronDown, ChevronRight, CheckCircle2, RefreshCw } from "lucide-react";
 import { countries, institutionTypes, educationSystems, gradingSystems, semesterSystems } from "@/lib/countries";
 import { toast } from "sonner";
 import {
@@ -143,6 +143,61 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
     setHasChanges(JSON.stringify(form) !== JSON.stringify(originalForm));
   }, [form, originalForm]);
 
+  // Detect schedule-related changes specifically
+  const scheduleKeys = ["workingDays", "slotDuration", "dayStartTime", "dayEndTime", "breakStartTime", "breakEndTime"] as const;
+  const hasScheduleChanges = scheduleKeys.some((key) => {
+    if (key === "workingDays") {
+      return JSON.stringify(form.workingDays) !== JSON.stringify(originalForm.workingDays);
+    }
+    return form[key] !== originalForm[key];
+  });
+
+  const [regenerating, setRegenerating] = useState(false);
+
+  const handleRegenerateSlots = async () => {
+    setRegenerating(true);
+    try {
+      // First save the current config
+      const saveRes = await fetch("/api/institution", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: institutionId, ...form }),
+      });
+      if (!saveRes.ok) {
+        toast.error("Erreur lors de la sauvegarde de la configuration");
+        return;
+      }
+
+      // Delete existing time slots
+      const deleteRes = await fetch(`/api/timeslots?institutionId=${institutionId}`, { method: "DELETE" });
+      if (!deleteRes.ok) {
+        toast.error("Erreur lors de la suppression des créneaux");
+        return;
+      }
+
+      // Regenerate time slots with new config
+      const genRes = await fetch("/api/timeslots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ generateFromConfig: true, institutionId }),
+      });
+
+      if (genRes.ok) {
+        const slots = await genRes.json();
+        toast.success(`Créneaux régénérés ✓`, { description: `${slots.length} créneau${slots.length !== 1 ? "x" : ""} créé${slots.length !== 1 ? "s" : ""}` });
+        setOriginalForm(form);
+        setHasChanges(false);
+        onUpdate();
+      } else {
+        toast.error("Erreur lors de la génération des créneaux");
+      }
+    } catch {
+      toast.error("Erreur lors de la régénération des créneaux");
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   const loadInstitution = async () => {
     try {
       const res = await fetch("/api/institution");
@@ -270,6 +325,31 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
           {configPreview}
         </pre>
       </div>
+
+      {/* Schedule config change warning */}
+      {hasScheduleChanges && (
+        <div className="border border-[#D97706] bg-[#FFFBEB] dark:bg-[#1C1600] dark:border-[#92400E] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-[#D97706] mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-[#92400E] dark:text-[#FCD34D]">
+                Créneaux horaires obsolètes
+              </p>
+              <p className="text-[10px] text-[#92400E] dark:text-[#FCD34D] mt-0.5">
+                Les créneaux horaires doivent être régénérés pour refléter ces changements
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={handleRegenerateSlots}
+            disabled={regenerating}
+            className="text-xs bg-[#D97706] text-white border-0 hover:bg-[#B45309] gap-1 shrink-0"
+          >
+            <RefreshCw className={`h-3 w-3 ${regenerating ? "animate-spin" : ""}`} />
+            {regenerating ? "Régénération..." : "Régénérer les créneaux"}
+          </Button>
+        </div>
+      )}
 
       {/* Institution Info */}
       <CollapsibleSection title="Informations générales">

@@ -50,6 +50,25 @@ export async function POST(request: Request) {
         coefficient: body.coefficient || null,
       },
     });
+
+    // Create teacher assignments if DB available
+    if (body.teacherIds && Array.isArray(body.teacherIds) && await isDatabaseAvailable()) {
+      try {
+        const { db } = await import("@/lib/db");
+        for (const teacherId of body.teacherIds) {
+          await db.teacherSubject.create({
+            data: {
+              teacherId,
+              subjectId: subject.id,
+              institutionId: body.institutionId,
+            },
+          });
+        }
+      } catch {
+        // Silently skip teacher assignments in fallback mode
+      }
+    }
+
     return NextResponse.json(subject);
   } catch (error) {
     console.error("POST /api/subjects error:", error);
@@ -63,7 +82,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, ...data } = body;
+    const { id, teacherIds, ...data } = body;
     if (!id) {
       return NextResponse.json({ error: "ID requis" }, { status: 400 });
     }
@@ -71,6 +90,22 @@ export async function PUT(request: Request) {
       where: { id },
       data,
     });
+
+    // Update teacher assignments if DB available
+    if (teacherIds !== undefined && Array.isArray(teacherIds) && await isDatabaseAvailable()) {
+      try {
+        const { db } = await import("@/lib/db");
+        await db.teacherSubject.deleteMany({ where: { subjectId: id } });
+        for (const teacherId of teacherIds) {
+          await db.teacherSubject.create({
+            data: { teacherId, subjectId: id, institutionId: body.institutionId },
+          });
+        }
+      } catch {
+        // Silently skip in fallback mode
+      }
+    }
+
     return NextResponse.json(subject);
   } catch (error) {
     console.error("PUT /api/subjects error:", error);

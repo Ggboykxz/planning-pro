@@ -22,7 +22,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Sparkles, Printer, AlertTriangle, ZoomIn, ZoomOut, Clock, Download, FileText, Image, Zap, ExternalLink, Pencil, Trash2, Share2, History, RotateCcw, Undo2, Redo2 } from "lucide-react";
+import { Sparkles, Printer, AlertTriangle, ZoomIn, ZoomOut, Clock, Download, FileText, Image, Zap, ExternalLink, Pencil, Trash2, Share2, History, RotateCcw, Undo2, Redo2, Plus, Calendar } from "lucide-react";
 import { dayNames } from "@/lib/countries";
 import { useAppStore, type TimetableViewMode } from "@/lib/store";
 import { ContextBar } from "@/components/layout/ContextBar";
@@ -97,6 +97,14 @@ interface RoomOption {
   name: string;
 }
 
+interface SubjectOption {
+  id: string;
+  name: string;
+  code: string | null;
+  type: string | null;
+  semester: string | null;
+}
+
 interface ConflictData {
   teacherConflicts: Array<{ teacherName: string; dayOfWeek: number; time: string; classes: string[] }>;
   roomConflicts: Array<{ roomName: string; dayOfWeek: number; time: string; classes: string[] }>;
@@ -124,6 +132,20 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
   const [editSlotOpen, setEditSlotOpen] = useState(false);
   const [editSlotData, setEditSlotData] = useState<{ teacherId: string; roomId: string }>({ teacherId: "", roomId: "" });
   const timetableRef = useRef<HTMLDivElement>(null);
+
+  // Add slot dialog state
+  const [addSlotOpen, setAddSlotOpen] = useState(false);
+  const [addSlotData, setAddSlotData] = useState<{
+    dayOfWeek: number;
+    startTime: string;
+    endTime: string;
+    subjectId: string;
+    teacherId: string;
+    roomId: string;
+  }>({ dayOfWeek: 1, startTime: "08:00", endTime: "09:30", subjectId: "", teacherId: "", roomId: "" });
+
+  // Subjects list
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
 
   // DnD state
   const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
@@ -173,6 +195,10 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     setSelectedRoomId,
     setCurrentSection,
     addNotification,
+    currentSemester,
+    currentAcademicYear,
+    setSemester,
+    setAcademicYear,
   } = useAppStore();
 
   useEffect(() => {
@@ -181,10 +207,11 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
 
   const loadData = async () => {
     try {
-      const [cRes, tRes, rRes] = await Promise.all([
+      const [cRes, tRes, rRes, sRes] = await Promise.all([
         fetch(`/api/classes?institutionId=${institutionId}`),
         fetch(`/api/teachers?institutionId=${institutionId}`),
         fetch(`/api/rooms?institutionId=${institutionId}`),
+        fetch(`/api/subjects?institutionId=${institutionId}`),
       ]);
       if (cRes.ok) {
         const cData = await cRes.json();
@@ -206,6 +233,10 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
         if (rData.length > 0 && !selectedRoomId) {
           setSelectedRoomId(rData[0].id);
         }
+      }
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        setSubjects(sData.map((s: SubjectOption) => ({ id: s.id, name: s.name, code: s.code, type: s.type, semester: s.semester })));
       }
     } catch (error) {
       console.error(error);
@@ -525,7 +556,7 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
       });
       if (res.ok) {
         const { shareId } = await res.json();
-        const shareUrl = `${window.location.origin}/?shareId=${shareId}`;
+        const shareUrl = `${window.location.origin}/share/${shareId}`;
         await navigator.clipboard.writeText(shareUrl);
         toast.success("Lien de partage copié ✓");
       } else {
@@ -636,6 +667,61 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
       }
     } catch {
       toast.error("Erreur lors de la suppression");
+    }
+  };
+
+  // Open add slot dialog for an empty cell
+  const handleOpenAddSlot = (dayOfWeek: number, startTime: string, endTime: string) => {
+    if (viewingVersionId) return; // Don't allow on historical versions
+    if (timetableViewMode !== "class") return; // Only allow in class view
+    setAddSlotData({
+      dayOfWeek,
+      startTime,
+      endTime,
+      subjectId: "",
+      teacherId: "",
+      roomId: "",
+    });
+    setAddSlotOpen(true);
+  };
+
+  // Save new slot
+  const handleSaveAddSlot = async () => {
+    if (!timetable?.id || !addSlotData.subjectId) {
+      toast.error("Veuillez sélectionner une matière");
+      return;
+    }
+    try {
+      const res = await fetch("/api/timetables", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          timetableId: timetable.id,
+          addSlot: {
+            subjectId: addSlotData.subjectId,
+            teacherId: addSlotData.teacherId || null,
+            roomId: addSlotData.roomId || null,
+            dayOfWeek: addSlotData.dayOfWeek,
+            startTime: addSlotData.startTime,
+            endTime: addSlotData.endTime,
+          },
+        }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        const conflicts = result.conflicts as string[];
+        if (conflicts && conflicts.length > 0) {
+          toast.success("Créneau ajouté (conflit détecté) ⚠");
+        } else {
+          toast.success("Créneau ajouté ✓");
+        }
+        setAddSlotOpen(false);
+        loadTimetable();
+      } else {
+        toast.error("Erreur lors de l'ajout du créneau");
+      }
+    } catch {
+      toast.error("Erreur lors de l'ajout du créneau");
     }
   };
 
@@ -751,7 +837,7 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
           toast.success("Créneau restauré ✓");
         }
       } else if (entry.actionType === "move") {
-        // Restore previous position
+        // Restore previous position (including dayOfWeek/startTime/endTime)
         await fetch("/api/timetables", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -759,6 +845,9 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
             slotId: entry.slotId,
             teacherId: entry.previousValues.teacherId || undefined,
             roomId: entry.previousValues.roomId || undefined,
+            dayOfWeek: entry.previousValues.dayOfWeek,
+            startTime: entry.previousValues.startTime,
+            endTime: entry.previousValues.endTime,
           }),
         });
         toast.success("Annulé ✓");
@@ -796,7 +885,7 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
         });
         toast.success("Suppression rétablie ✓");
       } else if (entry.actionType === "move") {
-        // Re-apply the move
+        // Re-apply the move (including dayOfWeek/startTime/endTime)
         await fetch("/api/timetables", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -804,6 +893,9 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
             slotId: entry.slotId,
             teacherId: entry.newValues.teacherId || undefined,
             roomId: entry.newValues.roomId || undefined,
+            dayOfWeek: entry.newValues.dayOfWeek,
+            startTime: entry.newValues.startTime,
+            endTime: entry.newValues.endTime,
           }),
         });
         toast.success("Rétabli ✓");
@@ -814,17 +906,30 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     }
   }, [redo]);
 
-  // Group slots by day
+  // Group slots by day (all slots for grid structure)
+  const allSlotsByDay: Record<number, TimetableSlotData[]> = {};
+  // Group slots by day - filter by semester if selected
   const slotsByDay: Record<number, TimetableSlotData[]> = {};
   if (timetable?.slots) {
     for (const slot of timetable.slots) {
+      // Always build full grid structure
+      if (!allSlotsByDay[slot.dayOfWeek]) allSlotsByDay[slot.dayOfWeek] = [];
+      allSlotsByDay[slot.dayOfWeek].push(slot);
+
+      // Filter by semester if currentSemester is set
+      if (currentSemester && slot.subject) {
+        const subjectInfo = subjects.find(s => s.id === slot.subject?.id);
+        if (subjectInfo?.semester && subjectInfo.semester !== currentSemester) {
+          continue; // Skip this slot - wrong semester
+        }
+      }
       if (!slotsByDay[slot.dayOfWeek]) slotsByDay[slot.dayOfWeek] = [];
       slotsByDay[slot.dayOfWeek].push(slot);
     }
   }
 
-  // Get unique days and time slots
-  const days = Object.keys(slotsByDay)
+  // Get unique days and time slots - use full grid structure (unfiltered) for days/times
+  const days = Object.keys(allSlotsByDay)
     .map(Number)
     .sort((a, b) => a - b);
   const allTimes = timetable?.slots
@@ -843,10 +948,10 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
     }
   }
 
-  // Calculate subject hours
+  // Calculate subject hours (from filtered slots)
   const subjectHours = new Map<string, { name: string; hours: number }>();
-  if (timetable?.slots) {
-    for (const slot of timetable.slots) {
+  for (const daySlots of Object.values(slotsByDay)) {
+    for (const slot of daySlots) {
       if (slot.subject) {
         const existing = subjectHours.get(slot.subject.id);
         if (existing) {
@@ -1035,6 +1140,21 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Semester filter */}
+          <Select value={currentSemester || "__all__"} onValueChange={(v) => setSemester(v === "__all__" ? null : v)}>
+            <SelectTrigger className="w-[120px] text-xs">
+              <Calendar className="h-3 w-3 mr-1 text-[#9A9898]" />
+              <SelectValue placeholder="Semestre" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Tous</SelectItem>
+              {[...new Set(subjects.filter(s => s.semester).map(s => s.semester!))]
+                .sort()
+                .map((sem) => (
+                  <SelectItem key={sem} value={sem}>{sem}</SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
           {timetableViewMode === "class" && (
             <Select value={selectedClassId || ""} onValueChange={(v) => setSelectedClassId(v)}>
               <SelectTrigger className="w-[180px] text-xs">
@@ -1425,8 +1545,13 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
                                 <DroppableCell
                                   id={`drop-${day}-${time}`}
                                   data={{ dayOfWeek: day, startTime: start, endTime: end }}
+                                  onClick={timetableViewMode === "class" && !viewingVersionId ? () => handleOpenAddSlot(day, start, end) : undefined}
                                 >
-                                  <div className="h-full min-h-[60px]" />
+                                  <div className="h-full min-h-[60px] flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                                    {timetableViewMode === "class" && !viewingVersionId && (
+                                      <Plus className="h-3 w-3 text-[#9A9898]" />
+                                    )}
+                                  </div>
                                 </DroppableCell>
                               ) : (
                                 <div className="h-full min-h-[60px]" />
@@ -1800,6 +1925,98 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
               className="text-xs bg-[#D97706] text-white hover:opacity-80 border-0"
             >
               Conserver le déplacement
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Slot Dialog */}
+      <Dialog open={addSlotOpen} onOpenChange={setAddSlotOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              Ajouter un créneau
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Time info display */}
+            <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-3 bg-[#F8F7F7] dark:bg-[#1A1A1A]">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-[#9A9898] uppercase font-bold tracking-wider">Jour</span>
+                <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-mono font-bold">
+                  {dayNames[addSlotData.dayOfWeek] || `Jour ${addSlotData.dayOfWeek}`}
+                </span>
+              </div>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[10px] text-[#9A9898] uppercase font-bold tracking-wider">Horaire</span>
+                <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-mono font-bold">
+                  {addSlotData.startTime} — {addSlotData.endTime}
+                </span>
+              </div>
+            </div>
+            {/* Subject selection */}
+            <div>
+              <label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
+                Matière <span className="text-[#DC2626]">*</span>
+              </label>
+              <Select value={addSlotData.subjectId} onValueChange={(v) => setAddSlotData((prev) => ({ ...prev, subjectId: v }))}>
+                <SelectTrigger className="text-xs font-mono">
+                  <SelectValue placeholder="> Sélectionner une matière" />
+                </SelectTrigger>
+                <SelectContent>
+                  {subjects.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}{s.code ? ` (${s.code})` : ""}{s.semester ? ` — ${s.semester}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Teacher selection */}
+            <div>
+              <label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
+                Enseignant
+              </label>
+              <Select value={addSlotData.teacherId} onValueChange={(v) => setAddSlotData((prev) => ({ ...prev, teacherId: v }))}>
+                <SelectTrigger className="text-xs font-mono">
+                  <SelectValue placeholder="> Sélectionner un enseignant" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teachers.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.firstName} {t.lastName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Room selection */}
+            <div>
+              <label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
+                Salle
+              </label>
+              <Select value={addSlotData.roomId} onValueChange={(v) => setAddSlotData((prev) => ({ ...prev, roomId: v }))}>
+                <SelectTrigger className="text-xs font-mono">
+                  <SelectValue placeholder="> Sélectionner une salle" />
+                </SelectTrigger>
+                <SelectContent>
+                  {rooms.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setAddSlotOpen(false)} className="text-xs">
+              Annuler
+            </Button>
+            <Button
+              onClick={handleSaveAddSlot}
+              disabled={!addSlotData.subjectId}
+              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Ajouter
             </Button>
           </DialogFooter>
         </DialogContent>

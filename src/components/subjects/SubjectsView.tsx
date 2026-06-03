@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Upload, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, Download, Users } from "lucide-react";
 import { subjectTypes } from "@/lib/countries";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -27,6 +27,12 @@ import { ImportDialog } from "@/components/shared/ImportDialog";
 import { Pagination } from "@/components/shared/Pagination";
 import { exportToCSV } from "@/lib/export-utils";
 import { toast } from "sonner";
+
+interface TeacherData {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
 
 interface SubjectData {
   id: string;
@@ -46,6 +52,7 @@ interface SubjectsViewProps {
 
 export function SubjectsView({ institutionId }: SubjectsViewProps) {
   const [subjects, setSubjects] = useState<SubjectData[]>([]);
+  const [teachers, setTeachers] = useState<TeacherData[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<SubjectData | null>(null);
@@ -75,6 +82,7 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
     type: "cours",
     semester: "S1",
     coefficient: 1,
+    teacherIds: [] as string[],
   });
 
   useEffect(() => {
@@ -95,8 +103,19 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
 
   const loadSubjects = async () => {
     try {
-      const res = await fetch(`/api/subjects?institutionId=${institutionId}`);
-      if (res.ok) setSubjects(await res.json());
+      const [sRes, tRes] = await Promise.all([
+        fetch(`/api/subjects?institutionId=${institutionId}`),
+        fetch(`/api/teachers?institutionId=${institutionId}`),
+      ]);
+      if (sRes.ok) setSubjects(await sRes.json());
+      if (tRes.ok) {
+        const tData = await tRes.json();
+        setTeachers(tData.map((t: TeacherData & { firstName: string; lastName: string }) => ({
+          id: t.id,
+          firstName: t.firstName,
+          lastName: t.lastName,
+        })));
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -106,7 +125,7 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
 
   const openCreate = () => {
     setEditingSubject(null);
-    setForm({ name: "", code: "", hoursPerWeek: 3, type: "cours", semester: "S1", coefficient: 1 });
+    setForm({ name: "", code: "", hoursPerWeek: 3, type: "cours", semester: "S1", coefficient: 1, teacherIds: [] });
     setValidationErrors({});
     setDialogOpen(true);
   };
@@ -120,6 +139,7 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
       type: subject.type || "cours",
       semester: subject.semester || "S1",
       coefficient: subject.coefficient || 1,
+      teacherIds: subject.teacherAssignments.map((ta) => ta.teacher.id),
     });
     setValidationErrors({});
     setDialogOpen(true);
@@ -139,11 +159,13 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
       const body = {
         ...(editingSubject ? { id: editingSubject.id } : {}),
         institutionId,
-        ...form,
+        name: form.name,
         code: form.code || null,
         hoursPerWeek: form.hoursPerWeek || null,
         coefficient: form.coefficient || null,
         semester: form.semester || null,
+        type: form.type,
+        teacherIds: form.teacherIds,
       };
       const res = await fetch("/api/subjects", {
         method: editingSubject ? "PUT" : "POST",
@@ -207,6 +229,15 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
 
   const getTypeLabel = (type: string | null) => {
     return subjectTypes.find((st) => st.value === type)?.label || type || "—";
+  };
+
+  const toggleTeacher = (teacherId: string) => {
+    setForm((prev) => ({
+      ...prev,
+      teacherIds: prev.teacherIds.includes(teacherId)
+        ? prev.teacherIds.filter((id) => id !== teacherId)
+        : [...prev.teacherIds, teacherId],
+    }));
   };
 
   const toggleSelect = (id: string) => {
@@ -501,6 +532,32 @@ export function SubjectsView({ institutionId }: SubjectsViewProps) {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            {/* Teacher Assignment Section */}
+            <div>
+              <Label className="text-xs font-bold flex items-center gap-1 mb-2">
+                <Users className="h-3 w-3" />
+                Enseignants
+              </Label>
+              <div className="flex flex-wrap gap-1">
+                {teachers.map((teacher) => (
+                  <button
+                    key={teacher.id}
+                    type="button"
+                    onClick={() => toggleTeacher(teacher.id)}
+                    className={`text-[10px] px-2 py-1 border transition-all duration-150 ${
+                      form.teacherIds.includes(teacher.id)
+                        ? "border-[#201D1D] dark:border-[#FDFCFC] bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] font-bold"
+                        : "border-[#E5E5E5] dark:border-[#2A2A2A] text-[#646262] dark:text-[#9A9898] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]"
+                    }`}
+                  >
+                    {teacher.firstName} {teacher.lastName}
+                  </button>
+                ))}
+                {teachers.length === 0 && (
+                  <p className="text-xs text-[#9A9898]">Créez d&apos;abord des enseignants</p>
+                )}
+              </div>
             </div>
           </div>
           <DialogFooter>
