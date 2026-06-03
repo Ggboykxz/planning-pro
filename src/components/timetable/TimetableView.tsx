@@ -22,7 +22,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Sparkles, Printer, AlertTriangle, ZoomIn, ZoomOut, Clock, Download, FileText, Image, Zap, ExternalLink, Pencil, Trash2, Share2, History, RotateCcw, Undo2, Redo2, Plus, Calendar } from "lucide-react";
+import { Sparkles, Printer, AlertTriangle, ZoomIn, ZoomOut, Clock, Download, FileText, Image, Zap, ExternalLink, Pencil, Trash2, Share2, History, RotateCcw, Undo2, Redo2, Plus, Calendar, CalendarSync } from "lucide-react";
 import { dayNames } from "@/lib/countries";
 import { useAppStore, type TimetableViewMode } from "@/lib/store";
 import { ContextBar } from "@/components/layout/ContextBar";
@@ -112,9 +112,10 @@ interface ConflictData {
 
 interface TimetableViewProps {
   institutionId: string;
+  institutionName?: string;
 }
 
-export function TimetableView({ institutionId }: TimetableViewProps) {
+export function TimetableView({ institutionId, institutionName }: TimetableViewProps) {
   const [classes, setClasses] = useState<ClassData[]>([]);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [rooms, setRooms] = useState<RoomOption[]>([]);
@@ -543,6 +544,30 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
   // PDF Export
   const handleExportPDF = () => {
     window.print();
+  };
+
+  // iCal Export
+  const handleExportICal = async () => {
+    if (!timetable) return;
+    try {
+      const res = await fetch(`/api/ical?timetableId=${timetable.id}`);
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        const disposition = res.headers.get("Content-Disposition");
+        const match = disposition?.match(/filename="?(.+)"?/);
+        a.download = match ? match[1] : `${timetable.name || "emploi-du-temps"}.ics`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success("iCal exporté ✓");
+      } else {
+        toast.error("Erreur lors de l'export iCal");
+      }
+    } catch {
+      toast.error("Erreur lors de l'export iCal");
+    }
   };
 
   // Share timetable
@@ -1126,13 +1151,16 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
 
   return (
     <div className="space-y-6">
-      {/* Print header - hidden on screen, visible in print */}
-      <div className="hidden print-header">
+      {/* Print title - hidden on screen, visible in print */}
+      <div className="hidden print-title">
         <h1>{timetable?.name || "Emploi du temps"}</h1>
-        <p>{timetable?.class?.name || ""}</p>
+        <p>
+          {institutionName && `${institutionName} — `}
+          {timetable?.class?.name || ""}
+        </p>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
         <div>
           <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Emploi du temps</h1>
           <p className="text-xs text-[#9A9898] mt-1">
@@ -1240,6 +1268,15 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
               >
                 <Image className="h-3 w-3 mr-1" alt="" />
                 PDF
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={handleExportICal}
+                className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+                title="Exporter iCal"
+              >
+                <CalendarSync className="h-3 w-3 mr-1" />
+                iCal
               </Button>
               <Button
                 variant="ghost"
@@ -1502,7 +1539,7 @@ export function TimetableView({ institutionId }: TimetableViewProps) {
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            <div className="overflow-x-auto border border-[#E5E5E5] dark:border-[#2A2A2A] relative" ref={timetableRef}>
+            <div className="overflow-x-auto border border-[#E5E5E5] dark:border-[#2A2A2A] relative timetable-grid" ref={timetableRef}>
             <table className="w-full border-collapse min-w-[700px]" style={{ fontSize: `${zoom * 0.12}px` }}>
               <thead>
                 <tr className="bg-[#F8F7F7] dark:bg-[#1A1A1A]">

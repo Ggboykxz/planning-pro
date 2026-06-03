@@ -158,6 +158,43 @@ interface AppConfigRecord {
   updatedAt: string;
 }
 
+interface UserRecord {
+  id: string;
+  email: string;
+  name: string;
+  passwordHash: string;
+  role: string;
+  avatar?: string | null;
+  institutionId?: string | null;
+  plan: string;
+  planExpiresAt?: string | null;
+  lastLoginAt?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface UserInstitutionRecord {
+  id: string;
+  userId: string;
+  institutionId: string;
+  role: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface AuditLogRecord {
+  id: string;
+  userId?: string | null;
+  institutionId?: string | null;
+  action: string;
+  entity: string;
+  entityId?: string | null;
+  details?: string | null;
+  ipAddress?: string | null;
+  createdAt: string;
+}
+
 // ─── In-Memory Store ─────────────────────────────────────────────
 
 const store = {
@@ -173,6 +210,9 @@ const store = {
   teacherSubjects: [] as TeacherSubjectRecord[],
   classSubjects: [] as ClassSubjectRecord[],
   appConfigs: [] as AppConfigRecord[],
+  users: [] as UserRecord[],
+  userInstitutions: [] as UserInstitutionRecord[],
+  auditLogs: [] as AuditLogRecord[],
 };
 
 // Try to load persisted data from /tmp
@@ -209,6 +249,15 @@ function loadFromDisk() {
       if (data.teacherSubjects) store.teacherSubjects = data.teacherSubjects;
       if (data.classSubjects) store.classSubjects = data.classSubjects;
       if (data.appConfigs) store.appConfigs = data.appConfigs;
+    }
+
+    // Load auth data
+    const authPath = "/tmp/planning-pro-auth.json";
+    if (fs.existsSync(authPath)) {
+      const data = JSON.parse(fs.readFileSync(authPath, "utf-8"));
+      if (data.users) store.users = data.users;
+      if (data.userInstitutions) store.userInstitutions = data.userInstitutions;
+      if (data.auditLogs) store.auditLogs = data.auditLogs;
     }
   } catch {
     // Ignore errors - start fresh
@@ -264,6 +313,22 @@ function saveToDisk() {
           teacherSubjects: store.teacherSubjects,
           classSubjects: store.classSubjects,
           appConfigs: store.appConfigs,
+        },
+        null,
+        2
+      ),
+      "utf-8"
+    );
+
+    // Save auth data
+    const authPath = "/tmp/planning-pro-auth.json";
+    fs.writeFileSync(
+      authPath,
+      JSON.stringify(
+        {
+          users: store.users,
+          userInstitutions: store.userInstitutions,
+          auditLogs: store.auditLogs,
         },
         null,
         2
@@ -1843,6 +1908,151 @@ export const dataStore = {
       const [deleted] = store.appConfigs.splice(idx, 1);
       saveToDisk();
       return deleted;
+    },
+  },
+
+  // ─── User ──────────────────────────────────────────────────────
+
+  user: {
+    findMany: async ({ where }: { where?: { institutionId?: string; email?: string } } = {}) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).user) return db.user.findMany({ where: where as any });
+        } catch {}
+      }
+      loadFromDisk(); // Always reload to sync across workers
+      let results = store.users;
+      if (where?.institutionId) results = results.filter(u => u.institutionId === where.institutionId);
+      if (where?.email) results = results.filter(u => u.email === where.email);
+      return results;
+    },
+    findUnique: async ({ where }: { where: { id?: string; email?: string } }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).user) return db.user.findUnique({ where: where as any });
+        } catch {}
+      }
+      loadFromDisk(); // Always reload to sync across workers
+      if (where.id) return store.users.find(u => u.id === where.id) || null;
+      if (where.email) return store.users.find(u => u.email === where.email) || null;
+      return null;
+    },
+    create: async ({ data }: { data: Omit<UserRecord, "id" | "createdAt" | "updatedAt"> }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).user) return db.user.create({ data: data as any });
+        } catch {}
+      }
+      const now = new Date().toISOString();
+      const record: UserRecord = { id: createId(), ...data, createdAt: now, updatedAt: now };
+      store.users.push(record);
+      saveToDisk();
+      return record;
+    },
+    update: async ({ where, data }: { where: { id: string }; data: Partial<UserRecord> }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).user) return db.user.update({ where, data: data as any });
+        } catch {}
+      }
+      const idx = store.users.findIndex(u => u.id === where.id);
+      if (idx === -1) throw new Error("Utilisateur non trouvé");
+      store.users[idx] = { ...store.users[idx], ...data, updatedAt: new Date().toISOString() };
+      saveToDisk();
+      return store.users[idx];
+    },
+    delete: async ({ where }: { where: { id: string } }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).user) return db.user.delete({ where });
+        } catch {}
+      }
+      const idx = store.users.findIndex(u => u.id === where.id);
+      if (idx === -1) throw new Error("Utilisateur non trouvé");
+      const [deleted] = store.users.splice(idx, 1);
+      store.userInstitutions = store.userInstitutions.filter(ui => ui.userId !== where.id);
+      saveToDisk();
+      return deleted;
+    },
+  },
+
+  // ─── UserInstitution ───────────────────────────────────────────
+
+  userInstitution: {
+    findMany: async ({ where }: { where?: { userId?: string; institutionId?: string } } = {}) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).userInstitution) return db.userInstitution.findMany({ where: where as any });
+        } catch {}
+      }
+      let results = store.userInstitutions;
+      if (where?.userId) results = results.filter(ui => ui.userId === where.userId);
+      if (where?.institutionId) results = results.filter(ui => ui.institutionId === where.institutionId);
+      return results;
+    },
+    create: async ({ data }: { data: Omit<UserInstitutionRecord, "id" | "createdAt" | "updatedAt"> }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).userInstitution) return db.userInstitution.create({ data: data as any });
+        } catch {}
+      }
+      const now = new Date().toISOString();
+      const record: UserInstitutionRecord = { id: createId(), ...data, createdAt: now, updatedAt: now };
+      store.userInstitutions.push(record);
+      saveToDisk();
+      return record;
+    },
+    delete: async ({ where }: { where: { id: string } }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).userInstitution) return db.userInstitution.delete({ where });
+        } catch {}
+      }
+      const idx = store.userInstitutions.findIndex(ui => ui.id === where.id);
+      if (idx === -1) throw new Error("UserInstitution non trouvé");
+      const [deleted] = store.userInstitutions.splice(idx, 1);
+      saveToDisk();
+      return deleted;
+    },
+  },
+
+  // ─── AuditLog ──────────────────────────────────────────────────
+
+  auditLog: {
+    findMany: async ({ where, orderBy, take }: { where?: { institutionId?: string; userId?: string; entity?: string }; orderBy?: unknown; take?: number } = {}) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).auditLog) return db.auditLog.findMany({ where: where as any, orderBy: { createdAt: 'desc' }, take });
+        } catch {}
+      }
+      let results = store.auditLogs;
+      if (where?.institutionId) results = results.filter(a => a.institutionId === where.institutionId);
+      if (where?.userId) results = results.filter(a => a.userId === where.userId);
+      if (where?.entity) results = results.filter(a => a.entity === where.entity);
+      results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      if (take) results = results.slice(0, take);
+      return results;
+    },
+    create: async ({ data }: { data: Omit<AuditLogRecord, "id" | "createdAt"> }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).auditLog) return db.auditLog.create({ data: data as any });
+        } catch {}
+      }
+      const record: AuditLogRecord = { id: createId(), ...data, createdAt: new Date().toISOString() };
+      store.auditLogs.push(record);
+      saveToDisk();
+      return record;
     },
   },
 };

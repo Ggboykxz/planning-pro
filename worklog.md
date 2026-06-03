@@ -1,3 +1,386 @@
+# PlanningPro - Work Log for Task "11-12"
+
+## Date: 2026-06-03
+
+## Summary
+Implemented 2 major features for the PlanningPro SaaS timetable management app:
+1. **Multi-Institution Support** - Users can switch between institutions, create new ones, and manage memberships
+2. **Print-Optimized View** - Enhanced print CSS for clean timetable printing with proper headers
+
+---
+
+### 1. Multi-Institution Support
+
+#### New API Route: `src/app/api/institutions/route.ts`
+- **GET** `/api/institutions?userId=xxx`: List all institutions the user has access to (via UserInstitution)
+  - Returns institutions enriched with userRole field
+- **POST** `/api/institutions`: Create a new institution and link to user
+  - Creates institution, UserInstitution record (role=admin), and generates default time slots
+  - Returns created institution with userRole, status 201
+- **DELETE** `/api/institutions?institutionId=xxx&userId=xxx`: Leave/remove an institution
+  - Prevents leaving the only institution
+  - Finds record by composite key, deletes by id
+
+#### Updated: `src/components/layout/Sidebar.tsx`
+- Added institution switcher dropdown at the top of the sidebar
+- Shows current institution name with Building2 icon
+- Dropdown lists all user's institutions (fetched from /api/institutions)
+- Current institution highlighted with Check icon
+- Role label for each institution (Administrateur/Gestionnaire/Observateur)
+- "+ Nouvel établissement" option navigates to /settings
+- Switching institution updates store's institutionId and redirects to /dashboard
+- Collapsed sidebar shows Building2 icon button to expand
+- Click-outside detection to close dropdown
+- Derived currentInstName from institutions list (no extra state sync)
+
+#### Updated: `src/components/settings/SettingsView.tsx`
+- Added "Gérer les établissements" collapsible section (defaultOpen=false)
+- Lists all user's institutions with name, role (Shield icon), and active indicator
+- "Basculer" button for non-active institutions
+- "Quitter" button (red) with confirmation dialog if more than one institution
+- "Ajouter un établissement" button with dashed border
+- New institution Dialog with name, type, and country fields
+- Auto-switches to newly created institution
+- All text in French, dark mode supported, mobile responsive
+
+---
+
+### 2. Print-Optimized View
+
+#### Updated: `src/app/globals.css`
+Enhanced `@media print` block:
+- Hides all UI chrome: `.no-print`, `nav`, `aside`, `.sidebar`, `header`, `footer`, `button`, `.mobile-bottom-nav`, `[role="dialog"]`, `.ai-assistant`
+- Full-width main content
+- White background, black text for print
+- Dark mode override forced to white in print
+- `.timetable-grid` and `table` with `break-inside: avoid`
+- New `.print-title` class for print-only headers (centered, with separator)
+- `-webkit-print-color-adjust: exact; print-color-adjust: exact`
+- `@page { margin: 1cm; size: landscape; }`
+
+#### Updated: `src/components/timetable/TimetableView.tsx`
+- Changed print header from `.print-header` to `.print-title` class
+- Added institution name to print title: `{institutionName} — {className}`
+- Added `institutionName` prop to component interface
+- Added `timetable-grid` class to timetable container div
+- Added `no-print` class to header toolbar section
+- Printer button (Imprimer) already existed
+
+#### Updated: `src/app/(app)/timetable/page.tsx`
+- Fetches institution name on mount
+- Passes `institutionName` prop to TimetableView
+
+---
+
+### Verification Results
+- ✅ All pages return HTTP 200: /, /dashboard, /timetable, /settings
+- ✅ API: GET /api/institutions?userId=xxx returns 200, POST creates correctly, DELETE validates
+- ✅ ESLint: no new errors (only pre-existing serve.js, page.tsx, cuid.ts errors)
+- ✅ Dark mode supported across all new components
+- ✅ Mobile responsive
+- ✅ Brutalist aesthetic maintained
+- ✅ All text in French
+
+---
+
+# PlanningPro - Work Log for Task "7-10"
+
+## Date: 2026-06-03
+
+## Summary
+Implemented 4 major features for the PlanningPro SaaS timetable management app:
+1. **Backup & Restore (Data Export/Import)** - Full JSON export/import of institution data via API and Settings UI
+2. **iCal Export** - Export timetables as .ics calendar files with recurring weekly events
+3. **PWA Support** - Manifest, service worker, icons, and meta tags for installable app
+4. **AI Assistant** - Floating chat panel with z-ai-web-dev-sdk integration
+
+---
+
+### 1. Backup & Restore
+
+#### New API Route: `src/app/api/backup/route.ts`
+- **GET** `/api/backup?institutionId=xxx`: Exports all institution data as JSON
+  - Returns complete JSON with: institution, teachers, rooms, subjects, classes, timeSlots, timetables, timetableSlots, teacherSubjects, classSubjects
+  - Includes metadata: exportDate, version, institutionName, institutionId
+  - Content-Disposition header for automatic file download
+  - Filename format: `planningpro-backup-{name}-{date}.json`
+- **POST** `/api/backup`: Import/restore data from JSON
+  - Validates backup structure (requires metadata.version)
+  - For each entity, creates or updates records (findUnique → update or create)
+  - Returns import summary with counts per entity type
+  - Gracefully skips individual record failures without aborting the whole import
+
+#### Updated: `src/components/settings/SettingsView.tsx`
+- Added "Sauvegarde et restauration" collapsible section (defaultOpen=false) at bottom
+- "Exporter les données" button → triggers GET /api/backup, downloads JSON file
+- "Importer des données" button → opens file picker (.json), reads file, POSTs to /api/backup
+- Warning banner about data overwriting (amber AlertTriangle style)
+- Loading states for both export and import operations
+- Success/error toast notifications with import summary
+- New imports: Download, Upload from lucide-react
+
+---
+
+### 2. iCal Export
+
+#### New API Route: `src/app/api/ical/route.ts`
+- **GET** `/api/ical?timetableId=xxx`: Exports timetable as iCal (.ics) format
+  - Fetches timetable with all slots enriched with subject/teacher/room info
+  - Generates proper iCal format:
+    - VCALENDAR with PRODID, VERSION, CALSCALE, METHOD
+    - VEVENT for each slot with:
+      - DTSTART/DTEND (calculated from dayOfWeek + startTime/endTime using next week as reference)
+      - SUMMARY (subject name)
+      - LOCATION (room name)
+      - DESCRIPTION (teacher name, class name)
+      - UID (unique per slot: `{slotId}@planningpro.app`)
+      - RRULE:FREQ=WEEKLY;BYDAY (recurring weekly on the correct day)
+    - TZID from institution timezone
+  - Content-Type: text/calendar; charset=utf-8
+  - Content-Disposition for .ics download
+  - iCal text escaping for special characters
+  - Day name mapping: 1=MO (Lundi) through 7=SU (Dimanche)
+
+#### Updated: `src/components/timetable/TimetableView.tsx`
+- Added `CalendarSync` icon import from lucide-react
+- Added `handleExportICal` function: fetches /api/ical, creates blob download
+- Added "iCal" button between PDF and Partager in the export toolbar
+- Same brutalist ghost button style as CSV/PNG/PDF buttons
+
+---
+
+### 3. PWA Support
+
+#### New: `public/manifest.json`
+- PWA manifest with PlanningPro app info
+- name, short_name, description (in French)
+- start_url: "/", display: standalone
+- background_color: #ffffff, theme_color: #201D1D
+- Icon entries for 192x192 and 512x512 PNG
+- categories: education, productivity
+- lang: fr, dir: ltr
+
+#### New: `public/sw.js`
+- Service worker for offline caching
+- CACHE_NAME: 'planning-pro-v1'
+- Caches: /, /dashboard, /timetable
+- Cache-first strategy for fetch events
+- Cleans old caches on activate
+
+#### New: `public/icon-192.png` and `public/icon-512.png`
+- Generated with z-ai-generate CLI tool
+- Minimalist geometric PP logo in monospace, black on white, brutalist style
+- Generated at 1024x1024 (largest allowed) for both sizes
+
+#### Updated: `src/app/layout.tsx`
+- Added `<link rel="manifest" href="/manifest.json" />` in head
+- Added `<meta name="theme-color" content="#201D1D" />`
+- Added `<link rel="apple-touch-icon" href="/icon-192.png" />`
+- Added service worker registration via dangerouslySetInnerHTML script
+- Updated metadata.icons to use /icon-192.png instead of external SVG
+- Added metadata.manifest and metadata.appleWebApp
+- Added Viewport export with themeColor
+
+---
+
+### 4. AI Assistant
+
+#### New API Route: `src/app/api/ai/route.ts`
+- **POST** `/api/ai`: Chat endpoint using z-ai-web-dev-sdk
+  - Accepts `{ message, context }` in request body
+  - Creates ZAI instance and calls chat.completions.create
+  - System prompt: French assistant for PlanningPro timetable management
+  - Helps with: timetable creation, conflict resolution, optimization, app usage
+  - temperature: 0.7, max_tokens: 500
+  - Context includes institutionId when available
+  - Error handling: returns friendly French error message on failure
+
+#### New Component: `src/components/shared/AIAssistant.tsx`
+- Floating Action Button (FAB) in bottom-right corner
+  - 48x48px Bot icon button
+  - Dark/light mode compatible (bg-[#201D1D]/bg-[#FDFCFC])
+  - Border, shadow, hover opacity transition
+- Chat panel (360x480px, max-width responsive)
+  - Header: "Assistant IA" with Bot icon and X close button
+  - Message list with auto-scroll
+    - User messages: right-aligned, dark background
+    - AI messages: left-aligned, light background with border
+    - Loading state: spinner with "Réflexion..." text
+  - Empty state: Bot icon, "Comment puis-je vous aider ?", suggestion chips
+  - Quick suggestion chips: "Aide pour emploi du temps", "Résoudre conflit", "Optimiser planning"
+  - Input field with send button (Send icon)
+  - Enter key to send
+  - All messages stored in local state only (not persisted)
+  - Brutalist aesthetic: zero border-radius, monospace, correct colors
+
+#### Updated: `src/components/layout/AppShell.tsx`
+- Added `AIAssistant` import
+- Added `<AIAssistant />` inside the main layout div, after CommandPalette and KeyboardShortcuts
+- Available on all pages when logged in
+
+---
+
+### Verification Results
+- ✅ All routes return HTTP 200: /, /dashboard, /timetable, /teachers, /rooms, /subjects, /classes, /settings, /profile, /pricing, /audit
+- ✅ API endpoints: /api/backup (GET 200, POST), /api/ical (GET), /api/ai (POST 200 with valid response)
+- ✅ PWA files accessible: /manifest.json (200), /sw.js (200), /icon-192.png (200), /icon-512.png (200)
+- ✅ ESLint: no new errors (only pre-existing serve.js, page.tsx, cuid.ts errors)
+- ✅ Dark mode supported across all new components
+- ✅ Mobile responsive (AIAssistant panel uses max-width, Settings buttons stack)
+- ✅ Brutalist aesthetic maintained (zero border-radius, monospace, correct colors)
+- ✅ AI Assistant responds in French with contextual help
+
+---
+
+# PlanningPro - Work Log for Task "3-6"
+
+## Date: 2026-06-03
+
+## Summary
+Implemented 4 major features for the PlanningPro SaaS timetable management app:
+1. **Modern Sidebar Navigation** - Replaced TopNav-based layout with a collapsible sidebar
+2. **Profile Page** - User profile/settings page with editable fields
+3. **Pricing Page** - 3-tier pricing page (Gratuit/Pro/Enterprise)
+4. **Audit Log Page** - Activity/audit log with filters and pagination
+
+---
+
+### 1. Modern Sidebar Navigation
+
+#### New Component: `src/components/layout/Sidebar.tsx`
+- Full sidebar with brutalist/terminal aesthetic (zero border-radius, monospace, dark mode)
+- Main navigation items with lucide-react icons:
+  - Tableau de bord (LayoutDashboard)
+  - Emploi du temps (Calendar)
+  - Enseignants (Users)
+  - Salles (DoorOpen)
+  - Matières (BookOpen)
+  - Classes (GraduationCap)
+  - Paramètres (Settings)
+- Divider
+- Secondary navigation:
+  - Profil (User) → /profile
+  - Abonnement (CreditCard) → /pricing
+  - Journal (ScrollText) → /audit
+- Bottom section: theme toggle (Sun/Moon), collapse toggle (PanelLeft/PanelLeftClose)
+- User section: avatar circle with first letter of name, user name and plan
+- Current page highlighted with bold text + left border accent
+- Collapsible: toggle between full sidebar (240px/w-60) and icon-only (56px/w-14)
+- Mobile: overlay drawer with backdrop, X close button
+- All text in French
+- Desktop: sticky sidebar, no scroll with page
+- Mobile: hidden by default, hamburger menu opens overlay
+
+#### Updated: `src/components/layout/AppShell.tsx`
+- Replaced TopNav import with Sidebar component
+- New layout: flex row with Sidebar + main content area
+- Added a slim top bar with mobile hamburger, institution name, search trigger (⌘K), NotificationCenter
+- Main content fills remaining space with overflow-y-auto
+- TopNav.tsx kept but no longer rendered by AppShell
+- MobileBottomNav no longer rendered (sidebar replaces it)
+- All existing keyboard shortcuts preserved (1-7, /)
+- All existing features preserved: CommandPalette, KeyboardShortcuts, ErrorBoundary
+
+---
+
+### 2. Profile Page
+
+#### New: `src/app/(app)/profile/page.tsx`
+- Avatar display (first letter of name in a bordered circle)
+- Name field (editable, with User icon)
+- Email field (read-only, with Lock icon, grayed out background)
+- Role display (badge: Administrateur/Gestionnaire/Utilisateur)
+- Plan display (badge with upgrade link to /pricing for non-Pro users)
+- Password change section:
+  - Current password (with show/hide toggle)
+  - New password (with show/hide toggle)
+  - Confirm password
+  - Client-side validation (6 char minimum, match check)
+- Preferences section: theme (system default), language (French)
+- Danger zone: delete account with two-step confirmation
+- Success/error messages with brutalist styled banners
+- Save button triggers PUT /api/users
+- Loads user from Zustand store or fallback /api/auth/me
+
+#### New: `src/app/api/users/route.ts`
+- **GET** `/api/users?userId=...`: Returns user info (without passwordHash)
+- **PUT** `/api/users`: Updates user name, avatar, password
+  - Password change requires currentPassword verification (bcryptjs)
+  - Minimum 6 characters for new password
+  - Creates audit log entry on update
+  - Returns updated user (without passwordHash)
+  - Uses Object.fromEntries to safely exclude passwordHash
+
+---
+
+### 3. Pricing Page
+
+#### New: `src/app/(app)/pricing/page.tsx`
+- 3 pricing tiers displayed as cards:
+  - **Gratuit** (0€/mois): 1 établissement, 10 enseignants, 5 classes, basic timetable, CSV export, email support
+  - **Pro** (29€/mois): Unlimited everything, AI generation, PDF/iCal export, link sharing, activity log, priority support - "Populaire" badge
+  - **Enterprise** (99€/mois): Everything in Pro + SSO/SAML, dedicated API, multi-sites, 24/7 support, SLA guarantee
+- Each feature has Check (included) or X (not included) icons
+- Pro card highlighted with darker border and "Populaire" badge
+- CTA buttons: "Plan actuel" (disabled for current plan), "Passer au Pro" (primary), "Contacter les ventes" (outline)
+- Responsive: 3 cards side-by-side on desktop, stacked on mobile
+- FAQ section with 4 common questions
+- Contact link in footer
+- All text in French, brutalist aesthetic
+
+---
+
+### 4. Audit Log Page
+
+#### New: `src/app/(app)/audit/page.tsx`
+- Table view of all recent actions
+- Columns: Date, Utilisateur, Action, Entité, Détails
+- Filter bar with:
+  - Search input (client-side filter across all fields)
+  - Action type dropdown: Création, Modification, Suppression, Connexion, Export
+  - Entity type dropdown: Utilisateur, Établissement, Enseignant, Salle, Matière, Classe, Emploi du temps, Créneau
+- Color-coded action badges:
+  - Création = green
+  - Modification = blue
+  - Suppression = red
+  - Connexion = gray
+  - Export = purple
+- Pagination with page info ("Affichage X–Y sur Z") and prev/next buttons
+- Empty state with FileX icon and helpful message
+- Fetches from /api/audit with institutionId, action, entity filters
+- French entity labels (Enseignant, Matière, etc.)
+- Date formatted in French locale
+
+#### New: `src/app/api/audit/route.ts`
+- **GET** `/api/audit`: Returns audit logs with optional filters
+  - Query params: institutionId, entity, action, limit (default 50), offset (default 0)
+  - Enriches each log with userName from user lookup
+  - Action filtering done in-memory (dataStore doesn't support action filter directly)
+  - Sorted by createdAt descending
+  - Returns paginated response: { logs, total, limit, offset }
+
+---
+
+### 5. CommandPalette Updates
+
+#### Updated: `src/components/shared/CommandPalette.tsx`
+- Added 3 new section items: Profil (User icon), Abonnement (CreditCard icon), Journal d'activité (ScrollText icon)
+- Added 3 new quick actions: "Voir mon profil", "Voir les tarifs", "Journal d'activité"
+- New icon imports: User, CreditCard, ScrollText
+
+---
+
+### Verification Results
+- ✅ All routes return HTTP 200: /dashboard, /timetable, /teachers, /rooms, /subjects, /classes, /settings, /profile, /pricing, /audit
+- ✅ API endpoints: /api/audit returns 200, /api/users returns correct status
+- ✅ ESLint: no new errors (only pre-existing serve.js errors)
+- ✅ Sidebar layout works with collapsible behavior
+- ✅ Dark mode supported across all new components
+- ✅ Mobile responsive (sidebar overlay, stacked pricing cards, filter layout)
+- ✅ Brutalist aesthetic maintained (zero border-radius, monospace, correct colors)
+
+---
+
 # PlanningPro - Work Log for Task "1-and-2"
 
 ## Date: 2026-06-02
@@ -197,3 +580,90 @@ User reported "Le site ne se charge pas correctement" and "redirigé à de trop 
 - ✅ Caddy proxy on port 81 forwards correctly to Next.js on port 3000
 - ✅ Preview domain requests return correct HTML (200, no redirects)
 - ✅ Production server process stable and persistent
+
+---
+
+## TASK 1: Authentication System & Database Schema Updates
+
+## Date: 2026-06-03
+
+### Summary
+Implemented the authentication system for PlanningPro to make it a real SaaS application:
+1. **Database Schema Updates** - Added User, UserInstitution, and AuditLog models to Prisma schema
+2. **Data Store Updates** - Added interfaces, in-memory storage, persistence, and CRUD methods for new models
+3. **Auth API Routes** - Created register, login, and me endpoints
+4. **Auth Pages** - Created login and register pages with brutalist design
+5. **Zustand Store Updates** - Added currentUser, sidebarOpen state and new sections
+
+### Changes Made
+
+#### 1. Prisma Schema (`prisma/schema.prisma`)
+- Added `User` model: id, email (unique), name, passwordHash, role, avatar, institutionId, plan, planExpiresAt, lastLoginAt, isActive
+- Added `UserInstitution` model: userId, institutionId, role (with unique constraint on [userId, institutionId])
+- Added `AuditLog` model: userId, institutionId, action, entity, entityId, details, ipAddress
+- Updated `Institution` model: added `users UserInstitution[]` and `primaryUsers User[] @relation("PrimaryInstitution")`
+- User→Institution relation uses `@relation("PrimaryInstitution")` to disambiguate
+
+#### 2. Data Store (`src/lib/data-store.ts`)
+- Added TypeScript interfaces: `UserRecord`, `UserInstitutionRecord`, `AuditLogRecord`
+- Added in-memory store arrays: `users`, `userInstitutions`, `auditLogs`
+- Updated `loadFromDisk()` to load from `/tmp/planning-pro-auth.json`
+- Updated `saveToDisk()` to save to `/tmp/planning-pro-auth.json`
+- Added `dataStore.user` with: `findMany`, `findUnique`, `create`, `update`, `delete`
+- Added `dataStore.userInstitution` with: `findMany`, `create`, `delete`
+- Added `dataStore.auditLog` with: `findMany`, `create`
+- All new methods include defensive checks: `(db as any).user` to handle Prisma client not having new models yet (server restart needed)
+
+#### 3. Auth API Routes
+- **POST `/api/auth/register`**: Creates user + optional institution + user-institution link + audit log
+  - Validates required fields (email, name, password)
+  - Minimum password length: 6 characters
+  - Checks for duplicate emails (409)
+  - Creates default time slots if institution provided
+  - Returns user (without passwordHash) and institutionId
+- **POST `/api/auth/login`**: Authenticates user
+  - Checks email/password, validates active status
+  - Updates lastLoginAt on success
+  - Creates audit log entry
+  - Returns user (without passwordHash)
+- **GET `/api/auth/me`**: Gets current user by userId (header/query param)
+  - Returns user data + institutions list
+
+#### 4. Auth Pages
+- **`/login`** (`src/app/(auth)/login/page.tsx`):
+  - Email + password form
+  - "Se connecter" button
+  - Error display with red border
+  - "Mode démo" button (navigates to /)
+  - Links to register and home
+  - Brutalist design: monospace font, zero border-radius, dark/light mode
+- **`/register`** (`src/app/(auth)/register/page.tsx`):
+  - Step 1: Name, Email, Password, Confirm Password
+  - Step 2 (optional): Institution name, type (select), country (select)
+  - Step progress indicator (two bars)
+  - Back/Next navigation
+  - Same brutalist design
+- **`(auth) layout** (`src/app/(auth)/layout.tsx`): Centered layout without AppShell
+
+#### 5. Zustand Store (`src/lib/store.ts`)
+- Added to `AppSection` type: `"profile" | "pricing" | "audit"`
+- Added to `sectionToPath`: profile→/profile, pricing→/pricing, audit→/audit
+- Added to `pathToSection`: /profile→profile, /pricing→pricing, /audit→audit
+- Added to `AppState`: `currentUser`, `setCurrentUser`, `sidebarOpen`, `setSidebarOpen`
+- `currentUser` type: `{ id, email, name, role, avatar?, institutionId?, plan }`
+
+### API Testing Results
+- ✅ POST /api/auth/register (without institution): 201, user created
+- ✅ POST /api/auth/register (with institution): 201, user + institution + time slots created
+- ✅ POST /api/auth/login (correct password): 200, user returned
+- ✅ POST /api/auth/login (wrong password): 401, error message
+- ✅ POST /api/auth/register (duplicate email): 409, error message
+- ✅ GET /login: 200
+- ✅ GET /register: 200
+
+### Page Verification Results
+- ✅ All existing pages still return HTTP 200
+- ✅ /login and /register pages render correctly
+- ✅ All existing API endpoints still functional
+- ✅ ESLint: only pre-existing errors (serve.js, unused directives)
+

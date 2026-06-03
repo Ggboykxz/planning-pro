@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Save, Trash2, AlertTriangle, ChevronDown, ChevronRight, CheckCircle2, RefreshCw } from "lucide-react";
+import { Save, Trash2, AlertTriangle, ChevronDown, ChevronRight, CheckCircle2, RefreshCw, Download, Upload, Building2, Plus, LogOut, Shield } from "lucide-react";
 import { countries, institutionTypes, educationSystems, gradingSystems, semesterSystems } from "@/lib/countries";
 import { toast } from "sonner";
 import {
@@ -26,6 +26,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { useAppStore } from "@/lib/store";
+import { cn } from "@/lib/utils";
 
 interface InstitutionData {
   id: string;
@@ -153,6 +162,99 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
   });
 
   const [regenerating, setRegenerating] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  // Multi-institution management
+  const { currentUser, setInstitutionId } = useAppStore();
+  const [userInstitutions, setUserInstitutions] = useState<Array<InstitutionData & { userRole: string }>>([]);
+  const [addInstOpen, setAddInstOpen] = useState(false);
+  const [newInstForm, setNewInstForm] = useState({ name: "", type: "universite", country: "FR" });
+  const [creatingInst, setCreatingInst] = useState(false);
+  const [leavingInstId, setLeavingInstId] = useState<string | null>(null);
+
+  // Load user institutions
+  useEffect(() => {
+    if (currentUser?.id) {
+      fetch(`/api/institutions?userId=${currentUser.id}`)
+        .then((res) => res.ok ? res.json() : [])
+        .then((data) => setUserInstitutions(data))
+        .catch(() => {});
+    }
+  }, [currentUser?.id, institutionId]);
+
+  const handleCreateInstitution = async () => {
+    if (!currentUser?.id || !newInstForm.name.trim()) return;
+    setCreatingInst(true);
+    try {
+      const country = countries.find((c) => c.code === newInstForm.country);
+      const res = await fetch("/api/institutions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          name: newInstForm.name.trim(),
+          type: newInstForm.type,
+          country: newInstForm.country,
+          timezone: country?.timezone || "Europe/Paris",
+          workingDays: country?.defaultWorkingDays || ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"],
+          dayStartTime: country?.defaultStartTime || "08:00",
+          dayEndTime: country?.defaultEndTime || "18:00",
+          breakStartTime: country?.defaultBreakStart || "12:00",
+          breakEndTime: country?.defaultBreakEnd || "14:00",
+          slotDuration: country?.defaultSlotDuration || 90,
+          educationSystem: country?.defaultEducationSystem || "LMD",
+          gradingSystem: country?.defaultGradingSystem || "20",
+          semesterSystem: country?.defaultSemesterSystem || "semestriel",
+        }),
+      });
+      if (res.ok) {
+        const newInst = await res.json();
+        toast.success(`Établissement « ${newInst.name} » créé ✓`);
+        setAddInstOpen(false);
+        setNewInstForm({ name: "", type: "universite", country: "FR" });
+        // Switch to the new institution
+        setInstitutionId(newInst.id);
+        window.location.assign("/dashboard");
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Erreur lors de la création");
+      }
+    } catch {
+      toast.error("Erreur lors de la création");
+    } finally {
+      setCreatingInst(false);
+    }
+  };
+
+  const handleLeaveInstitution = async (instId: string) => {
+    if (!currentUser?.id) return;
+    setLeavingInstId(instId);
+    try {
+      const res = await fetch(`/api/institutions?institutionId=${instId}&userId=${currentUser.id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Établissement quitté ✓");
+        // If we left the current institution, switch to another
+        if (instId === institutionId) {
+          const remaining = userInstitutions.filter((i) => i.id !== instId);
+          if (remaining.length > 0) {
+            setInstitutionId(remaining[0].id);
+            window.location.assign("/dashboard");
+          }
+        }
+        // Refresh the list
+        const data = await fetch(`/api/institutions?userId=${currentUser.id}`).then((r) => r.json());
+        setUserInstitutions(data);
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Erreur lors du retrait");
+      }
+    } catch {
+      toast.error("Erreur lors du retrait");
+    } finally {
+      setLeavingInstId(null);
+    }
+  };
 
   const handleRegenerateSlots = async () => {
     setRegenerating(true);
@@ -544,6 +646,271 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
           </div>
         </div>
       </CollapsibleSection>
+
+      {/* Institution Management */}
+      <CollapsibleSection title="Gérer les établissements" defaultOpen={false}>
+        <div className="space-y-4">
+          {/* Institution list */}
+          <div className="space-y-2">
+            {userInstitutions.length === 0 ? (
+              <p className="text-xs text-[#9A9898]">Aucun établissement configuré</p>
+            ) : (
+              userInstitutions.map((inst) => (
+                <div
+                  key={inst.id}
+                  className={cn(
+                    "border border-[#E5E5E5] dark:border-[#2A2A2A] p-3 flex items-center justify-between gap-3",
+                    inst.id === institutionId && "bg-[#F8F7F7] dark:bg-[#1A1A1A] border-[#201D1D] dark:border-[#FDFCFC]"
+                  )}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Building2 className="h-4 w-4 text-[#9A9898] shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-mono font-bold text-[#201D1D] dark:text-[#FDFCFC] truncate">
+                        {inst.name}
+                        {inst.id === institutionId && (
+                          <span className="text-[10px] font-normal text-[#9A9898] ml-2">(actif)</span>
+                        )}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <Shield className="h-3 w-3 text-[#9A9898]" />
+                        <span className="text-[10px] text-[#9A9898]">
+                          {inst.userRole === "admin" ? "Administrateur" : inst.userRole === "editor" ? "Gestionnaire" : "Observateur"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {inst.id !== institutionId && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-[10px] h-7 gap-1 text-[#9A9898]"
+                        onClick={() => {
+                          setInstitutionId(inst.id);
+                          window.location.assign("/dashboard");
+                        }}
+                      >
+                        Basculer
+                      </Button>
+                    )}
+                    {userInstitutions.length > 1 && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-[10px] h-7 gap-1 text-[#DC2626] hover:text-[#DC2626]"
+                            disabled={leavingInstId === inst.id}
+                          >
+                            <LogOut className="h-3 w-3" />
+                            Quitter
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle className="text-sm font-bold flex items-center gap-2">
+                              <AlertTriangle className="h-4 w-4 text-[#DC2626]" />
+                              Quitter « {inst.name} »
+                            </AlertDialogTitle>
+                            <AlertDialogDescription className="text-xs">
+                              Vous perdrez l&apos;accès à cet établissement et toutes ses données. Les autres membres ne seront pas affectés.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel className="text-xs">Annuler</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleLeaveInstitution(inst.id)}
+                              className="text-xs bg-[#DC2626] text-white border-0"
+                            >
+                              Quitter l&apos;établissement
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Add new institution button */}
+          <Button
+            onClick={() => setAddInstOpen(true)}
+            variant="outline"
+            className="text-xs w-full gap-1 border-[#E5E5E5] dark:border-[#2A2A2A] border-dashed"
+          >
+            <Plus className="h-3 w-3" />
+            Ajouter un établissement
+          </Button>
+        </div>
+      </CollapsibleSection>
+
+      {/* Backup & Restore */}
+      <CollapsibleSection title="Sauvegarde et restauration" defaultOpen={false}>
+        <div className="space-y-4">
+          <div className="border border-[#D97706] bg-[#FFFBEB] dark:bg-[#1C1600] dark:border-[#92400E] p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-[#D97706] mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-bold text-[#92400E] dark:text-[#FCD34D]">
+                  Attention — Écrasement des données
+                </p>
+                <p className="text-[10px] text-[#92400E] dark:text-[#FCD34D] mt-0.5">
+                  L&apos;importation d&apos;une sauvegarde remplacera les données existantes. Assurez-vous d&apos;avoir exporté une sauvegarde récente avant d&apos;importer.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              onClick={async () => {
+                setExporting(true);
+                try {
+                  const res = await fetch(`/api/backup?institutionId=${institutionId}`);
+                  if (res.ok) {
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    const disposition = res.headers.get("Content-Disposition");
+                    const match = disposition?.match(/filename="?(.+)"?/);
+                    a.download = match ? match[1] : `planningpro-backup-${new Date().toISOString().split("T")[0]}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    toast.success("Données exportées ✓");
+                  } else {
+                    toast.error("Erreur lors de l&apos;export");
+                  }
+                } catch {
+                  toast.error("Erreur lors de l&apos;export");
+                } finally {
+                  setExporting(false);
+                }
+              }}
+              disabled={exporting}
+              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0 gap-1"
+            >
+              <Download className="h-3 w-3" />
+              {exporting ? "Exportation..." : "Exporter les données"}
+            </Button>
+            <Button
+              onClick={() => {
+                const input = document.createElement("input");
+                input.type = "file";
+                input.accept = ".json";
+                input.onchange = async (e) => {
+                  const file = (e.target as HTMLInputElement).files?.[0];
+                  if (!file) return;
+                  setImporting(true);
+                  try {
+                    const text = await file.text();
+                    const data = JSON.parse(text);
+                    const res = await fetch("/api/backup", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(data),
+                    });
+                    if (res.ok) {
+                      const result = await res.json();
+                      toast.success("Données importées ✓", {
+                        description: Object.entries(result.summary || {})
+                          .map(([k, v]) => `${k}: ${v}`)
+                          .join(", "),
+                      });
+                      onUpdate();
+                    } else {
+                      const err = await res.json();
+                      toast.error(err.error || "Erreur lors de l&apos;import");
+                    }
+                  } catch {
+                    toast.error("Fichier invalide ou erreur lors de l&apos;import");
+                  } finally {
+                    setImporting(false);
+                  }
+                };
+                input.click();
+              }}
+              disabled={importing}
+              variant="outline"
+              className="text-xs gap-1 border-[#E5E5E5] dark:border-[#2A2A2A]"
+            >
+              <Upload className="h-3 w-3" />
+              {importing ? "Importation..." : "Importer des données"}
+            </Button>
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      {/* New institution dialog */}
+      <Dialog open={addInstOpen} onOpenChange={setAddInstOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              Nouvel établissement
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="text-xs font-bold">Nom de l&apos;établissement</Label>
+              <Input
+                value={newInstForm.name}
+                onChange={(e) => setNewInstForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Ex: Université Cheikh Anta Diop"
+                className="mt-1"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs font-bold">Type</Label>
+                <Select
+                  value={newInstForm.type}
+                  onValueChange={(v) => setNewInstForm((prev) => ({ ...prev, type: v }))}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {institutionTypes.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-bold">Pays</Label>
+                <Select
+                  value={newInstForm.country}
+                  onValueChange={(v) => setNewInstForm((prev) => ({ ...prev, country: v }))}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {countries.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{c.flag} {c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAddInstOpen(false)}
+              className="text-xs border-[#E5E5E5] dark:border-[#2A2A2A]"
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleCreateInstitution}
+              disabled={creatingInst || !newInstForm.name.trim()}
+              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0 gap-1"
+            >
+              {creatingInst ? "Création..." : "Créer l'établissement"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-[#E5E5E5] dark:border-[#2A2A2A]">

@@ -44,6 +44,8 @@ model Institution {
   timeSlots TimeSlot[]
   teacherSubjects TeacherSubject[]
   classSubjects ClassSubject[]
+  users     UserInstitution[]
+  primaryUsers User[]  @relation("PrimaryInstitution")
 }
 
 model Teacher {
@@ -221,4 +223,55 @@ model AppConfig {
   key       String   @unique
   value     String
   updatedAt DateTime @updatedAt
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  passwordHash  String
+  role          String   @default("admin")  // "admin", "teacher", "viewer"
+  avatar        String?
+  institutionId String?  // Primary institution
+  plan          String   @default("free")   // "free", "pro", "enterprise"
+  planExpiresAt DateTime?
+  lastLoginAt   DateTime?
+  isActive      Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  institution Institution? @relation("PrimaryInstitution", fields: [institutionId], references: [id], onDelete: SetNull)
+  auditLogs  AuditLog[]
+  institutions UserInstitution[]
+}
+
+model UserInstitution {
+  id            String   @id @default(cuid())
+  userId        String
+  institutionId String
+  role          String   @default("admin") // "admin", "editor", "viewer"
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, institutionId])
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  userId        String?
+  institutionId String?
+  action        String   // "create", "update", "delete", "login", "export", "share", "generate"
+  entity        String   // "institution", "teacher", "room", "subject", "class", "timetable", "user"
+  entityId      String?
+  details       String?  // JSON string with action details
+  ipAddress     String?
+
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }

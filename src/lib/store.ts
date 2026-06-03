@@ -7,7 +7,10 @@ export type AppSection =
   | "rooms"
   | "subjects"
   | "classes"
-  | "settings";
+  | "settings"
+  | "profile"
+  | "pricing"
+  | "audit";
 
 // URL path <-> AppSection mapping
 export const sectionToPath: Record<AppSection, string> = {
@@ -18,6 +21,9 @@ export const sectionToPath: Record<AppSection, string> = {
   subjects: "/subjects",
   classes: "/classes",
   settings: "/settings",
+  profile: "/profile",
+  pricing: "/pricing",
+  audit: "/audit",
 };
 
 export const pathToSection: Record<string, AppSection> = {
@@ -28,6 +34,9 @@ export const pathToSection: Record<string, AppSection> = {
   "/subjects": "subjects",
   "/classes": "classes",
   "/settings": "settings",
+  "/profile": "profile",
+  "/pricing": "pricing",
+  "/audit": "audit",
 };
 
 export type TimetableViewMode = "class" | "teacher" | "room";
@@ -74,6 +83,11 @@ interface AppState {
   markAllNotificationsRead: () => void;
   removeNotification: (id: string) => void;
   clearNotifications: () => void;
+  // Auth
+  currentUser: { id: string; email: string; name: string; role: string; avatar?: string | null; institutionId?: string | null; plan: string } | null;
+  setCurrentUser: (user: AppState["currentUser"]) => void;
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -129,4 +143,9 @@ export const useAppStore = create<AppState>((set) => ({
       notifications: state.notifications.filter((n) => n.id !== id),
     })),
   clearNotifications: () => set({ notifications: [] }),
+  // Auth
+  currentUser: null,
+  setCurrentUser: (user) => set({ currentUser: user }),
+  sidebarOpen: true,
+  setSidebarOpen: (open) => set({ sidebarOpen: open }),
 }));

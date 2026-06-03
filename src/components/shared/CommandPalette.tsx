@@ -14,6 +14,9 @@ import {
   UserPlus,
   Sparkles,
   Search,
+  User,
+  CreditCard,
+  ScrollText,
 } from "lucide-react";
 
 const sectionItems: { id: AppSection; label: string; path: string; icon: React.ReactNode; shortcut: string }[] = [
@@ -24,6 +27,9 @@ const sectionItems: { id: AppSection; label: string; path: string; icon: React.R
   { id: "subjects", label: "Matières", path: "/subjects", icon: <BookOpen className="h-3.5 w-3.5" />, shortcut: "5" },
   { id: "classes", label: "Classes", path: "/classes", icon: <GraduationCap className="h-3.5 w-3.5" />, shortcut: "6" },
   { id: "settings", label: "Paramètres", path: "/settings", icon: <Settings className="h-3.5 w-3.5" />, shortcut: "7" },
+  { id: "profile", label: "Profil", path: "/profile", icon: <User className="h-3.5 w-3.5" />, shortcut: "" },
+  { id: "pricing", label: "Abonnement", path: "/pricing", icon: <CreditCard className="h-3.5 w-3.5" />, shortcut: "" },
+  { id: "audit", label: "Journal d'activité", path: "/audit", icon: <ScrollText className="h-3.5 w-3.5" />, shortcut: "" },
 ];
 
 const quickActions: { label: string; path: string; icon: React.ReactNode }[] = [
@@ -31,6 +37,9 @@ const quickActions: { label: string; path: string; icon: React.ReactNode }[] = [
   { label: "Créer une salle", path: "/rooms", icon: <DoorOpen className="h-3.5 w-3.5" /> },
   { label: "Nouvelle matière", path: "/subjects", icon: <BookOpen className="h-3.5 w-3.5" /> },
   { label: "Générer emploi du temps", path: "/timetable", icon: <Sparkles className="h-3.5 w-3.5" /> },
+  { label: "Voir mon profil", path: "/profile", icon: <User className="h-3.5 w-3.5" /> },
+  { label: "Voir les tarifs", path: "/pricing", icon: <CreditCard className="h-3.5 w-3.5" /> },
+  { label: "Journal d'activité", path: "/audit", icon: <ScrollText className="h-3.5 w-3.5" /> },
 ];
 
 function CommandPaletteInner() {

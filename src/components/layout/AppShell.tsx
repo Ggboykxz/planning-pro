@@ -3,11 +3,14 @@
 import { useEffect, useState, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { useAppStore, pathToSection, type AppSection } from "@/lib/store";
-import { TopNav } from "@/components/layout/TopNav";
-import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
+import { Sidebar } from "@/components/layout/Sidebar";
 import { CommandPalette } from "@/components/shared/CommandPalette";
 import { KeyboardShortcuts } from "@/components/shared/KeyboardShortcuts";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { NotificationCenter } from "@/components/shared/NotificationCenter";
+import { Menu, Search } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { AIAssistant } from "@/components/shared/AIAssistant";
 
 interface InstitutionData {
   id: string;
@@ -34,10 +37,13 @@ const sectionToPath: Record<AppSection, string> = {
   subjects: "/subjects",
   classes: "/classes",
   settings: "/settings",
+  profile: "/profile",
+  pricing: "/pricing",
+  audit: "/audit",
 };
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { currentSection, institutionId, setInstitutionId, setCurrentSection } = useAppStore();
+  const { currentSection, institutionId, setInstitutionId, setCurrentSection, setMobileMenuOpen, setCommandPaletteOpen } = useAppStore();
   const [institution, setInstitution] = useState<InstitutionData | null>(null);
   const [loading, setLoading] = useState(true);
   const pathname = usePathname();
@@ -128,28 +134,63 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0A0A0A]">
         <div className="text-center">
-          <p className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] skeleton-shimmer inline-block px-2">
+          <p className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] skeleton-shimmer inline-block px-2 font-mono">
             PlanningPro_
           </p>
-          <p className="text-xs text-[#9A9898] mt-1">Chargement...</p>
+          <p className="text-xs text-[#9A9898] mt-1 font-mono">Chargement...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-white dark:bg-[#0A0A0A]">
-      <TopNav institutionName={institution.name} />
-      <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
-        <div className="max-w-[1080px] mx-auto px-4 sm:px-6 py-6 page-transition">
-          <ErrorBoundary section={pathToSection[pathname] || "PlanningPro"}>
-            {children}
-          </ErrorBoundary>
-        </div>
-      </main>
-      <MobileBottomNav />
+    <div className="min-h-screen flex bg-white dark:bg-[#0A0A0A]">
+      {/* Sidebar */}
+      <Sidebar institutionName={institution.name} />
+
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top bar for mobile + search */}
+        <header className="sticky top-0 z-30 h-12 flex items-center justify-between border-b border-[#E5E5E5] dark:border-[#2A2A2A] bg-white dark:bg-[#0A0A0A] px-4 shrink-0">
+          <div className="flex items-center gap-2">
+            {/* Mobile hamburger */}
+            <button
+              className="md:hidden p-1.5 text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="Ouvrir le menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <span className="text-[10px] text-[#9A9898] font-mono hidden sm:inline">
+              {institution.name}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCommandPaletteOpen(true)}
+              className="flex items-center gap-2 text-[10px] text-[#9A9898] border border-[#E5E5E5] dark:border-[#2A2A2A] px-3 py-1.5 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors font-mono"
+            >
+              <Search className="h-3 w-3" />
+              <span className="hidden sm:inline">Rechercher...</span>
+              <kbd className="hidden sm:inline text-[9px] border border-[#E5E5E5] dark:border-[#2A2A2A] px-1 py-0.5">⌘K</kbd>
+            </button>
+            <NotificationCenter />
+          </div>
+        </header>
+
+        {/* Page content */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-[1080px] mx-auto px-4 sm:px-6 py-6 page-transition">
+            <ErrorBoundary section={pathToSection[pathname] || "PlanningPro"}>
+              {children}
+            </ErrorBoundary>
+          </div>
+        </main>
+      </div>
+
       <CommandPalette />
       <KeyboardShortcuts />
+      <AIAssistant />
     </div>
   );
 }
