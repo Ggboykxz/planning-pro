@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { countries, institutionTypes, educationSystems, gradingSystems, semesterSystems, type CountryPreset } from "@/lib/countries";
-import { ChevronLeft, ChevronRight, Check, AlertCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Check, AlertCircle, Clock, Calendar } from "lucide-react";
 
 interface OnboardingWizardProps {
   onComplete: (data: Record<string, unknown>) => void;
@@ -25,6 +25,20 @@ const allDays = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
 export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProps) {
   const [step, setStep] = useState(1);
   const [selectedCountry, setSelectedCountry] = useState<CountryPreset | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<Array<{
+    id: string;
+    name: string;
+    description: string;
+    config: {
+      slotDuration: number;
+      dayStartTime: string;
+      dayEndTime: string;
+      breakStartTime: string;
+      breakEndTime: string;
+      workingDays: string[];
+    } | null;
+  }>>([]);
   const [formData, setFormData] = useState({
     country: "",
     timezone: "Africa/Dakar",
@@ -70,6 +84,31 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
         ? prev.workingDays.filter((d) => d !== day)
         : [...prev.workingDays, day],
     }));
+  };
+
+  // Load templates on mount
+  useEffect(() => {
+    fetch("/api/templates")
+      .then((res) => res.json())
+      .then((data) => setTemplates(data))
+      .catch(() => {});
+  }, []);
+
+  // Handle template selection
+  const handleTemplateSelect = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    const template = templates.find((t) => t.id === templateId);
+    if (template?.config) {
+      setFormData((prev) => ({
+        ...prev,
+        slotDuration: template.config!.slotDuration,
+        dayStartTime: template.config!.dayStartTime,
+        dayEndTime: template.config!.dayEndTime,
+        breakStartTime: template.config!.breakStartTime,
+        breakEndTime: template.config!.breakEndTime,
+        workingDays: [...template.config!.workingDays],
+      }));
+    }
   };
 
   const handleSubmit = () => {
@@ -271,74 +310,125 @@ export function OnboardingWizard({ onComplete, isLoading }: OnboardingWizardProp
             <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">
               Configuration des horaires
             </h3>
-            <div>
-              <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Jours ouvrés</Label>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {allDays.map((day) => (
-                  <label key={day} className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={formData.workingDays.includes(day)}
-                      onCheckedChange={() => handleDayToggle(day)}
-                    />
-                    <span className="text-xs text-[#646262]">{day}</span>
-                  </label>
+
+            {/* Template Selector */}
+            <div className="mb-4">
+              <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-2 block">
+                Choisir un modèle horaire
+              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                {templates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => handleTemplateSelect(template.id)}
+                    className={`p-3 border text-left transition-all duration-150 ${
+                      selectedTemplateId === template.id
+                        ? "border-[#201D1D] dark:border-[#FDFCFC] bg-[#F8F7F7] dark:bg-[#1A1A1A]"
+                        : "border-[#E5E5E5] dark:border-[#2A2A2A] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]"
+                    }`}
+                  >
+                    <p className={`text-xs font-bold ${
+                      selectedTemplateId === template.id
+                        ? "text-[#201D1D] dark:text-[#FDFCFC]"
+                        : "text-[#646262] dark:text-[#9A9898]"
+                    }`}>
+                      {template.name}
+                    </p>
+                    <p className="text-[10px] text-[#9A9898] mt-0.5">
+                      {template.description}
+                    </p>
+                    {template.config && (
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <span className="text-[9px] text-[#9A9898] flex items-center gap-0.5">
+                          <Clock className="h-2.5 w-2.5" />
+                          {template.config.slotDuration}min
+                        </span>
+                        <span className="text-[9px] text-[#9A9898] flex items-center gap-0.5">
+                          <Calendar className="h-2.5 w-2.5" />
+                          {template.config.workingDays.length}j
+                        </span>
+                      </div>
+                    )}
+                  </button>
                 ))}
               </div>
-              {formData.workingDays.length === 0 && (
-                <p className="text-[10px] text-[#DC2626] mt-2">Sélectionnez au moins un jour ouvré</p>
-              )}
             </div>
-            <div className="grid grid-cols-2 gap-4">
+
+            <div className="border-t border-[#E5E5E5] dark:border-[#2A2A2A] pt-4">
+              <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-2 block">
+                {selectedTemplateId === "custom" || !selectedTemplateId ? "Configuration manuelle" : "Ajuster la configuration"}
+              </Label>
               <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Début de journée</Label>
-                <Input
-                  type="time"
-                  value={formData.dayStartTime}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, dayStartTime: e.target.value }))}
-                  className="mt-1"
-                />
+                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Jours ouvrés</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {allDays.map((day) => (
+                    <label key={day} className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={formData.workingDays.includes(day)}
+                        onCheckedChange={() => handleDayToggle(day)}
+                      />
+                      <span className="text-xs text-[#646262]">{day}</span>
+                    </label>
+                  ))}
+                </div>
+                {formData.workingDays.length === 0 && (
+                  <p className="text-[10px] text-[#DC2626] mt-2">Sélectionnez au moins un jour ouvré</p>
+                )}
               </div>
-              <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Fin de journée</Label>
-                <Input
-                  type="time"
-                  value={formData.dayEndTime}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, dayEndTime: e.target.value }))}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Début de pause</Label>
-                <Input
-                  type="time"
-                  value={formData.breakStartTime}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, breakStartTime: e.target.value }))}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Fin de pause</Label>
-                <Input
-                  type="time"
-                  value={formData.breakEndTime}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, breakEndTime: e.target.value }))}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Durée d&apos;un créneau (min)</Label>
-                <Select
-                  value={String(formData.slotDuration)}
-                  onValueChange={(v) => setFormData((prev) => ({ ...prev, slotDuration: parseInt(v) }))}
-                >
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="45">45 minutes</SelectItem>
-                    <SelectItem value="60">1 heure</SelectItem>
-                    <SelectItem value="90">1h30</SelectItem>
-                    <SelectItem value="120">2 heures</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <div>
+                  <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Début de journée</Label>
+                  <Input
+                    type="time"
+                    value={formData.dayStartTime}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, dayStartTime: e.target.value }))}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Fin de journée</Label>
+                  <Input
+                    type="time"
+                    value={formData.dayEndTime}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, dayEndTime: e.target.value }))}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Début de pause</Label>
+                  <Input
+                    type="time"
+                    value={formData.breakStartTime}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, breakStartTime: e.target.value }))}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Fin de pause</Label>
+                  <Input
+                    type="time"
+                    value={formData.breakEndTime}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, breakEndTime: e.target.value }))}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Durée d&apos;un créneau (min)</Label>
+                  <Select
+                    value={String(formData.slotDuration)}
+                    onValueChange={(v) => setFormData((prev) => ({ ...prev, slotDuration: parseInt(v) }))}
+                  >
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="45">45 minutes</SelectItem>
+                      <SelectItem value="55">55 minutes</SelectItem>
+                      <SelectItem value="60">1 heure</SelectItem>
+                      <SelectItem value="90">1h30</SelectItem>
+                      <SelectItem value="120">2 heures</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
           </div>

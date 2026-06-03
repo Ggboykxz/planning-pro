@@ -30,20 +30,7 @@ import { ConflictPanel } from "./ConflictPanel";
 import { DraggableSlot, DroppableCell, DragOverlayContent } from "./DndSlotComponents";
 import { toast } from "sonner";
 import { useUndoRedo, type UndoEntry } from "@/hooks/useUndoRedo";
-
-// Subject color palette - subtle tints with colored left border
-const subjectColorPalette = [
-  { border: "border-l-emerald-500", bg: "bg-emerald-50/50 dark:bg-emerald-950/20" },
-  { border: "border-l-amber-500", bg: "bg-amber-50/50 dark:bg-amber-950/20" },
-  { border: "border-l-rose-500", bg: "bg-rose-50/50 dark:bg-rose-950/20" },
-  { border: "border-l-violet-500", bg: "bg-violet-50/50 dark:bg-violet-950/20" },
-  { border: "border-l-cyan-500", bg: "bg-cyan-50/50 dark:bg-cyan-950/20" },
-  { border: "border-l-orange-500", bg: "bg-orange-50/50 dark:bg-orange-950/20" },
-  { border: "border-l-teal-500", bg: "bg-teal-50/50 dark:bg-teal-950/20" },
-  { border: "border-l-pink-500", bg: "bg-pink-50/50 dark:bg-pink-950/20" },
-  { border: "border-l-indigo-500", bg: "bg-indigo-50/50 dark:bg-indigo-950/20" },
-  { border: "border-l-lime-500", bg: "bg-lime-50/50 dark:bg-lime-950/20" },
-];
+import { getSubjectColor } from "@/lib/subject-colors";
 
 // Generation progress steps
 const GENERATION_STEPS = [
@@ -961,17 +948,8 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
     ? [...new Set(timetable.slots.map((s) => `${s.startTime}-${s.endTime}`))].sort()
     : [];
 
-  // Color assignment for subjects
-  const subjectColorMap = new Map<string, number>();
-  let colorIndex = 0;
-  if (timetable?.slots) {
-    for (const slot of timetable.slots) {
-      if (slot.subject && !subjectColorMap.has(slot.subject.id)) {
-        subjectColorMap.set(slot.subject.id, colorIndex % subjectColorPalette.length);
-        colorIndex++;
-      }
-    }
-  }
+  // Color assignment for subjects - now uses getSubjectColor from subject-colors.ts
+  // No longer need subjectColorMap; colors are derived deterministically from subject name
 
   // Calculate subject hours (from filtered slots)
   const subjectHours = new Map<string, { name: string; hours: number }>();
@@ -1596,8 +1574,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                             </td>
                           );
                         }
-                        const colorIdx = subjectColorMap.get(slot.subject.id) || 0;
-                        const color = subjectColorPalette[colorIdx];
+                        const slotColor = getSubjectColor(slot.subject.name, document.documentElement.classList.contains("dark"));
                         const isHovered = hoveredSlot === slot.id;
                         const isSelected = selectedSlot?.id === slot.id;
                         return (
@@ -1618,29 +1595,34 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                                     data={{ slotId: slot.id, dayOfWeek: slot.dayOfWeek, startTime: slot.startTime, endTime: slot.endTime }}
                                   >
                                     <div
-                                      className={`border-l-[3px] ${color.border} ${color.bg} p-2 min-h-[60px] transition-all duration-150 timetable-slot-clickable ${
+                                      style={{
+                                        backgroundColor: slotColor.bg,
+                                        borderLeftColor: slotColor.text,
+                                        color: slotColor.text,
+                                      }}
+                                      className={`border-l-[3px] p-2 min-h-[60px] transition-all duration-150 timetable-slot-clickable ${
                                         isHovered || isSelected ? "ring-1 ring-[#201D1D]/20 dark:ring-[#FDFCFC]/20" : ""
                                       } ${activeSlotId === slot.id ? "opacity-40" : ""}`}
                                       onMouseEnter={() => setHoveredSlot(slot.id)}
                                       onMouseLeave={() => setHoveredSlot(null)}
                                       onClick={() => setSelectedSlot(slot)}
                                     >
-                                      <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] truncate">
+                                      <p className="text-xs font-bold truncate">
                                         {slot.subject.name}
                                       </p>
                                       {slot.subject.type && (
-                                        <span className="text-[9px] text-[#9A9898] uppercase">
+                                        <span className="text-[9px] opacity-70 uppercase">
                                           {slot.subject.type}
                                         </span>
                                       )}
                                       <div className="mt-1">
                                         {slot.teacher && (
-                                          <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
+                                          <p className="text-[10px] opacity-70 truncate">
                                             {slot.teacher.firstName.charAt(0)}. {slot.teacher.lastName}
                                           </p>
                                         )}
                                         {slot.room && (
-                                          <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
+                                          <p className="text-[10px] opacity-70 truncate">
                                             {slot.room.name}
                                           </p>
                                         )}
@@ -1649,29 +1631,34 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                                   </DraggableSlot>
                                 ) : (
                                   <div
-                                    className={`border-l-[3px] ${color.border} ${color.bg} p-2 min-h-[60px] transition-all duration-150 timetable-slot-clickable ${
+                                    style={{
+                                      backgroundColor: slotColor.bg,
+                                      borderLeftColor: slotColor.text,
+                                      color: slotColor.text,
+                                    }}
+                                    className={`border-l-[3px] p-2 min-h-[60px] transition-all duration-150 timetable-slot-clickable ${
                                       isHovered || isSelected ? "ring-1 ring-[#201D1D]/20 dark:ring-[#FDFCFC]/20" : ""
                                     }`}
                                     onMouseEnter={() => setHoveredSlot(slot.id)}
                                     onMouseLeave={() => setHoveredSlot(null)}
                                     onClick={() => setSelectedSlot(slot)}
                                   >
-                                    <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] truncate">
+                                    <p className="text-xs font-bold truncate">
                                       {slot.subject.name}
                                     </p>
                                     {slot.subject.type && (
-                                      <span className="text-[9px] text-[#9A9898] uppercase">
+                                      <span className="text-[9px] opacity-70 uppercase">
                                         {slot.subject.type}
                                       </span>
                                     )}
                                     <div className="mt-1">
                                       {slot.teacher && (
-                                        <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
+                                        <p className="text-[10px] opacity-70 truncate">
                                           {slot.teacher.firstName.charAt(0)}. {slot.teacher.lastName}
                                         </p>
                                       )}
                                       {slot.room && (
-                                        <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
+                                        <p className="text-[10px] opacity-70 truncate">
                                           {slot.room.name}
                                         </p>
                                       )}
@@ -1779,22 +1766,24 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                     teacher: activeSlotData.teacher,
                     room: activeSlotData.room,
                   }}
-                  colorClass={subjectColorPalette[subjectColorMap.get(activeSlotData.subject?.id || "") || 0]?.border || "border-l-gray-500"}
-                  bgClass={subjectColorPalette[subjectColorMap.get(activeSlotData.subject?.id || "") || 0]?.bg || "bg-gray-50/50"}
+                  bgColor={getSubjectColor(activeSlotData.subject?.name || "", document.documentElement.classList.contains("dark")).bg}
+                  textColor={getSubjectColor(activeSlotData.subject?.name || "", document.documentElement.classList.contains("dark")).text}
                 />
               ) : null}
             </DragOverlay>
           </DndContext>
 
-          {/* Subject Hours Summary */}
+          {/* Subject Hours Summary / Color Legend */}
           {subjectHours.size > 0 && (
             <div className="flex flex-wrap gap-3 pt-1">
               {Array.from(subjectHours.entries()).map(([subjectId, info]) => {
-                const colorIdx = subjectColorMap.get(subjectId) || 0;
-                const color = subjectColorPalette[colorIdx];
+                const subjectColor = getSubjectColor(info.name, document.documentElement.classList.contains("dark"));
                 return (
                   <div key={subjectId} className="flex items-center gap-1.5">
-                    <div className={`h-3 w-3 border-l-[3px] ${color.border} ${color.bg}`} />
+                    <div
+                      className="h-3 w-3 border-l-[3px]"
+                      style={{ backgroundColor: subjectColor.bg, borderLeftColor: subjectColor.text }}
+                    />
                     <span className="text-[10px] text-[#646262]">{info.name}</span>
                     <span className="text-[10px] text-[#9A9898]">({info.hours}h)</span>
                   </div>

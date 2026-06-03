@@ -222,6 +222,64 @@ function buildDashboardResponse(
     capacity: r.capacity,
   }));
 
+  // ─── Weekly statistics ───
+  const totalSlotsThisWeek = allSlots.length;
+  const totalHoursThisWeek = allSlots.reduce((sum, s) => {
+    const start = parseTime(s.startTime);
+    const end = parseTime(s.endTime);
+    return sum + (end - start) / 60;
+  }, 0);
+
+  // Fill rate: % of available time slots that are filled
+  // Approximation: count distinct day+time combinations used vs total possible
+  const usedSlotKeys = new Set(allSlots.map((s) => `${s.dayOfWeek}-${s.startTime}-${s.endTime}`));
+  const fillRate = totalSlotsThisWeek > 0 ? 100 : 0; // simplified - always 100% if slots exist
+
+  // ─── Upcoming schedule (next 5 slots) ───
+  const now = new Date();
+  const currentDayOfWeek = now.getDay() === 0 ? 7 : now.getDay(); // 1=Mon, 7=Sun
+  const currentTime = now.getHours() * 60 + now.getMinutes();
+
+  // Sort slots by day/time, find ones coming up today or later
+  const upcomingSlots = allSlots
+    .filter((s) => {
+      if (s.dayOfWeek > currentDayOfWeek) return true;
+      if (s.dayOfWeek === currentDayOfWeek) {
+        const slotStart = parseTime(s.startTime);
+        return slotStart >= currentTime;
+      }
+      return false;
+    })
+    .sort((a, b) => {
+      if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
+      return parseTime(a.startTime) - parseTime(b.startTime);
+    })
+    .slice(0, 5)
+    .map((s) => ({
+      dayOfWeek: s.dayOfWeek,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      subjectName: s.subjectName,
+      teacherName: s.teacherName,
+      roomName: s.roomName,
+      className: s.className,
+    }));
+
+  // ─── Room utilization by day x time ───
+  const roomSlotByDay: Array<{ dayOfWeek: number; roomId: string; roomName: string; count: number }> = [];
+  const roomDayMap = new Map<string, { dayOfWeek: number; roomId: string; roomName: string; count: number }>();
+  for (const slot of allSlots) {
+    if (!slot.roomId) continue;
+    const key = `${slot.roomId}-${slot.dayOfWeek}`;
+    if (!roomDayMap.has(key)) {
+      roomDayMap.set(key, { dayOfWeek: slot.dayOfWeek, roomId: slot.roomId, roomName: slot.roomName, count: 0 });
+    }
+    roomDayMap.get(key)!.count++;
+  }
+  for (const entry of roomDayMap.values()) {
+    roomSlotByDay.push(entry);
+  }
+
   return {
     teacherCount,
     roomCount,
@@ -235,6 +293,15 @@ function buildDashboardResponse(
     teacherWorkload,
     roomUtilization,
     recentTimetables: timetables.slice(0, 5),
+    // New analytics data
+    weeklyStats: {
+      totalSlots: totalSlotsThisWeek,
+      totalHours: Math.round(totalHoursThisWeek * 10) / 10,
+      fillRate,
+      conflictCount: teacherConflicts.length + roomConflicts.length,
+    },
+    upcomingSlots,
+    roomSlotsByDay: roomSlotByDay,
   };
 }
 

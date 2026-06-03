@@ -7,6 +7,8 @@ export type AppSection =
   | "rooms"
   | "subjects"
   | "classes"
+  | "absences"
+  | "student"
   | "settings"
   | "profile"
   | "pricing"
@@ -20,6 +22,8 @@ export const sectionToPath: Record<AppSection, string> = {
   rooms: "/rooms",
   subjects: "/subjects",
   classes: "/classes",
+  absences: "/absences",
+  student: "/student",
   settings: "/settings",
   profile: "/profile",
   pricing: "/pricing",
@@ -33,6 +37,8 @@ export const pathToSection: Record<string, AppSection> = {
   "/rooms": "rooms",
   "/subjects": "subjects",
   "/classes": "classes",
+  "/absences": "absences",
+  "/student": "student",
   "/settings": "settings",
   "/profile": "profile",
   "/pricing": "pricing",

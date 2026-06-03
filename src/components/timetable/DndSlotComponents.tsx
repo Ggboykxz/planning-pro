@@ -87,36 +87,39 @@ interface DragOverlayContentProps {
     teacher: { firstName: string; lastName: string } | null;
     room: { name: string } | null;
   };
-  colorClass: string;
-  bgClass: string;
+  bgColor?: string;
+  textColor?: string;
 }
 
-export function DragOverlayContent({ slot, colorClass, bgClass }: DragOverlayContentProps) {
+export function DragOverlayContent({ slot, bgColor, textColor }: DragOverlayContentProps) {
   return (
     <div
+      style={{
+        backgroundColor: bgColor || undefined,
+        borderLeftColor: textColor || undefined,
+        color: textColor || undefined,
+      }}
       className={cn(
         "border-l-[3px] p-2 min-h-[60px] min-w-[120px]",
-        colorClass,
-        bgClass,
         "shadow-lg opacity-90 border border-[#201D1D]/10 dark:border-[#FDFCFC]/10"
       )}
     >
       {slot.subject && (
-        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] truncate">
+        <p className="text-xs font-bold truncate">
           {slot.subject.name}
         </p>
       )}
       {slot.subject?.type && (
-        <span className="text-[9px] text-[#9A9898] uppercase">{slot.subject.type}</span>
+        <span className="text-[9px] opacity-70 uppercase">{slot.subject.type}</span>
       )}
       <div className="mt-1">
         {slot.teacher && (
-          <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
+          <p className="text-[10px] opacity-70 truncate">
             {slot.teacher.firstName.charAt(0)}. {slot.teacher.lastName}
           </p>
         )}
         {slot.room && (
-          <p className="text-[10px] text-[#646262] dark:text-[#9A9898] truncate">
+          <p className="text-[10px] opacity-70 truncate">
             {slot.room.name}
           </p>
         )}

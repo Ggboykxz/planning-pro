@@ -27,6 +27,8 @@ const sectionShortcuts: Record<string, AppSection> = {
   "5": "subjects",
   "6": "classes",
   "7": "settings",
+  "8": "absences",
+  "9": "student",
 };
 
 const sectionToPath: Record<AppSection, string> = {
@@ -36,6 +38,8 @@ const sectionToPath: Record<AppSection, string> = {
   rooms: "/rooms",
   subjects: "/subjects",
   classes: "/classes",
+  absences: "/absences",
+  student: "/student",
   settings: "/settings",
   profile: "/profile",
   pricing: "/pricing",

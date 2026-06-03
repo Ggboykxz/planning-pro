@@ -46,6 +46,8 @@ model Institution {
   classSubjects ClassSubject[]
   users     UserInstitution[]
   primaryUsers User[]  @relation("PrimaryInstitution")
+  absences  Absence[]
+  holidays  Holiday[]
 }
 
 model Teacher {
@@ -65,6 +67,8 @@ model Teacher {
   institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
   subjectAssignments TeacherSubject[]
   timetableSlots TimetableSlot[]
+  absences         Absence[]     @relation("AbsenceTeacher")
+  substituteAbsences Absence[]   @relation("AbsenceSubstitute")
 }
 
 model Room {
@@ -207,6 +211,7 @@ model TimetableSlot {
   dayOfWeek    Int
   startTime    String
   endTime      String
+  isLocked     Boolean  @default(false)
   
   timetable    Timetable @relation(fields: [timetableId], references: [id], onDelete: Cascade)
   timeSlot     TimeSlot?  @relation(fields: [timeSlotId], references: [id], onDelete: SetNull)
@@ -259,6 +264,39 @@ model UserInstitution {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, institutionId])
+}
+
+model Absence {
+  id                  String   @id @default(cuid())
+  institutionId       String
+  teacherId           String
+  substituteTeacherId String?
+  startDate           String   // ISO date
+  endDate             String   // ISO date
+  reason              String   // "maladie", "formation", "personnel", "autre"
+  status              String   // "pending", "approved", "rejected"
+  notes               String?
+  
+  institution         Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  teacher             Teacher     @relation("AbsenceTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  substituteTeacher   Teacher?    @relation("AbsenceSubstitute", fields: [substituteTeacherId], references: [id], onDelete: SetNull)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Holiday {
+  id            String   @id @default(cuid())
+  institutionId String
+  name          String   // "Vacances de Noël", "Vacances de Pâques", etc.
+  startDate     String   // ISO date
+  endDate       String   // ISO date
+  type          String   // "vacances", "jour_ferie", "pont", "autre"
+  
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model AuditLog {

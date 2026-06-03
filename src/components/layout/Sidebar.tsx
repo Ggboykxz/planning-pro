@@ -14,6 +14,7 @@ import {
   DoorOpen,
   BookOpen,
   GraduationCap,
+  UserX,
   Settings,
   User,
   CreditCard,
@@ -36,10 +37,12 @@ const mainNavItems: { id: AppSection; label: string; path: string; icon: React.E
   { id: "rooms", label: "Salles", path: "/rooms", icon: DoorOpen },
   { id: "subjects", label: "Matières", path: "/subjects", icon: BookOpen },
   { id: "classes", label: "Classes", path: "/classes", icon: GraduationCap },
+  { id: "absences", label: "Absences", path: "/absences", icon: UserX },
   { id: "settings", label: "Paramètres", path: "/settings", icon: Settings },
 ];
 
 const secondaryNavItems: { id: AppSection; label: string; path: string; icon: React.ElementType }[] = [
+  { id: "student", label: "Portail étudiant", path: "/student", icon: GraduationCap },
   { id: "profile", label: "Profil", path: "/profile", icon: User },
   { id: "pricing", label: "Abonnement", path: "/pricing", icon: CreditCard },
   { id: "audit", label: "Journal", path: "/audit", icon: ScrollText },

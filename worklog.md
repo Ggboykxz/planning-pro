@@ -1,3 +1,391 @@
+# PlanningPro - Work Log for Task "16"
+
+## Date: 2026-06-03
+
+## Summary
+Implemented 4 features for the PlanningPro SaaS timetable management app:
+1. **Subject Color Coding System** — Deterministic color utility + timetable slot rendering with color
+2. **Enhanced Dashboard with Analytics** — Weekly stats, upcoming schedule, workload chart, room heatmap
+3. **Student Portal / Public View** — Read-only student timetable view with class selector
+4. **Timetable Templates** — API + onboarding wizard template selector
+
+---
+
+### 1. Subject Color Coding System
+
+#### New: `src/lib/subject-colors.ts`
+- 15-color palette with light and dark mode support
+- `getSubjectColor(subjectName, isDark)` — deterministic color assignment via name hashing
+- Each color has: bg, text, and dark variants (dark.bg, dark.text)
+- Colors: Amber, Blue, Green, Pink, Indigo, Red, Teal, Yellow, Purple, Orange, Green2, Orange2, Light Green, Blue2, Pink2
+- `getAllSubjectColors()` export for legend rendering
+
+#### Updated: `src/components/timetable/TimetableView.tsx`
+- Replaced old `subjectColorPalette` (Tailwind class-based) with `getSubjectColor()` from `subject-colors.ts`
+- Removed `subjectColorMap` Map (colors are now derived from subject name directly)
+- Slot rendering uses inline styles: `backgroundColor`, `borderLeftColor`, `color` from `getSubjectColor()`
+- Subject text uses `opacity-70` for teacher/room info instead of fixed gray
+- Subject Hours Summary uses new color system with inline styles
+- DragOverlay passes `bgColor`/`textColor` props instead of Tailwind classes
+
+#### Updated: `src/components/timetable/DndSlotComponents.tsx`
+- `DragOverlayContent` now accepts `bgColor` and `textColor` props (replaces `colorClass`/`bgClass`)
+- Renders with inline `style={{ backgroundColor, borderLeftColor, color }}`
+- Text elements use `opacity-70` for secondary info
+
+---
+
+### 2. Enhanced Dashboard with Analytics
+
+#### Updated: `src/app/api/dashboard/route.ts`
+- Added `weeklyStats`: { totalSlots, totalHours, fillRate, conflictCount }
+  - totalSlots: count of all timetable slots
+  - totalHours: sum of slot durations in hours
+  - fillRate: 100% if slots exist, 0% otherwise
+  - conflictCount: same as top-level conflictCount
+- Added `upcomingSlots`: next 5 slots from current day/time
+  - Filters slots where dayOfWeek >= current day AND startTime >= current time
+  - Sorted by dayOfWeek then startTime
+  - Each entry: dayOfWeek, startTime, endTime, subjectName, teacherName, roomName, className
+- Added `roomSlotsByDay`: room utilization by day of week
+  - Groups slots by roomId+dayOfWeek, counts per group
+  - Each entry: dayOfWeek, roomId, roomName, count
+
+#### Updated: `src/components/dashboard/DashboardView.tsx`
+- New imports: Calendar, Clock, MapPin, Users, AlertTriangle, useRouter, getSubjectColor, recharts (BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell)
+- Updated `DashboardData` interface with weeklyStats, upcomingSlots, roomSlotsByDay
+- **Weekly Statistics Cards** (4 cards in a row):
+  - Cours cette semaine (totalSlots count)
+  - Heures enseignées (totalHours + "h")
+  - Taux de remplissage (fillRate + "%")
+  - Conflits détectés (conflictCount, red if >0)
+- **Upcoming Schedule** (next 5 slots):
+  - Each slot shows: subject color indicator, subject name, class name
+  - Time/day, teacher name, room name
+  - Clickable to navigate to timetable section
+  - Empty state: "Aucun cours à venir cette semaine"
+- **Teacher Workload Distribution Chart** (recharts horizontal BarChart):
+  - Two bars: "maximum" (gray) and "assignées" (color-coded)
+  - Color coding: green (<80%), yellow (80-100%), red (>100%)
+  - Uses `Cell` component for per-bar coloring
+  - French tooltip formatter
+- **Room Utilization Heatmap** (div-based grid):
+  - Rooms as rows, days (Lun-Sam) as columns
+  - Heatmap colors: empty=light gray, 1-2=emerald, 3-4=amber, 5+=red
+  - Supports dark mode with dark variants
+  - Legend showing color meaning
+  - Max 10 rooms displayed
+
+---
+
+### 3. Student Portal / Public View
+
+#### New: `src/app/(app)/student/page.tsx`
+- Read-only student timetable view
+- **Header**: "Portail étudiant" with GraduationCap icon
+- **Class selector**: Dropdown fetched from `/api/classes?institutionId=xxx`
+- **Timetable grid**: Same layout as TimetableView but:
+  - No drag-and-drop, no editing
+  - Subject color coding via `getSubjectColor()`
+  - Current day highlighted (underline + yellow dot in header, subtle bg tint in cells)
+  - Break time rows marked with "PAUSE" label
+- **Subject color legend**: Below the grid, auto-generated from timetable data
+- **Print button**: Uses `window.print()`
+- **Empty states**: No classes, no timetable generated
+- All text in French
+
+#### Updated: `src/lib/store.ts`
+- Added `"student"` to `AppSection` type union
+- Added `student: "/student"` to `sectionToPath`
+- Added `"/student": "student"` to `pathToSection`
+
+#### Updated: `src/components/layout/Sidebar.tsx`
+- Added "Portail étudiant" with GraduationCap icon as first secondary nav item (after divider, before Profil)
+
+#### Updated: `src/components/layout/AppShell.tsx`
+- Added `"9": "student"` to `sectionShortcuts` map
+- Added `student: "/student"` to local `sectionToPath` map
+
+#### Updated: `src/components/shared/CommandPalette.tsx`
+- Added "Portail étudiant" section item with GraduationCap icon and shortcut "9"
+- Added "Portail étudiant" quick action with GraduationCap icon
+
+---
+
+### 4. Timetable Templates
+
+#### New: `src/app/api/templates/route.ts`
+- **GET**: Returns 6 predefined templates:
+  - Université LMD (90min, 12h-14h30 break, 6 days)
+  - Lycée Français (60min, 12h-14h break, 5 days)
+  - Collège Français (55min, 12h-13h30 break, 5 days)
+  - École Primaire (45min, 11h30-13h30 break, 5 days)
+  - Université Anglophone (60min, 12h-13h break, 5 days)
+  - Personnalisé (null config)
+- **POST**: Apply template to institution
+  - Updates institution config (slotDuration, times, workingDays)
+  - Deletes existing time slots and regenerates based on template config
+  - Creates break time slots for each working day
+  - Returns success message with slots generated count
+
+#### Updated: `src/components/onboarding/OnboardingWizard.tsx`
+- Added template selector at top of Step 3 (Schedule Configuration)
+- Grid of template cards (2 columns) with:
+  - Name (bold if selected)
+  - Description
+  - Key stats: slot duration (Clock icon) + days count (Calendar icon)
+  - Selected state: bold border + bg highlight
+- Clicking a template auto-fills the schedule form (slotDuration, times, workingDays)
+- "Personnalisé" option leaves form for manual configuration
+- Form section label changes: "Configuration manuelle" or "Ajuster la configuration"
+- Added `useEffect` to fetch templates on mount
+- Added `selectedTemplateId` and `templates` state
+- Added 55min option to slot duration dropdown (for Collège Français)
+
+---
+
+### Verification Results
+- ✅ `bun run lint` — Only pre-existing errors (serve.js, page.tsx, cuid.ts)
+- ✅ All routes return HTTP 200: /, /dashboard, /timetable, /student, /teachers, /rooms, /subjects, /classes, /settings, /profile, /pricing, /audit, /absences
+- ✅ GET /api/templates returns 200 with 6 templates
+- ✅ GET /api/dashboard returns new fields (weeklyStats, upcomingSlots, roomSlotsByDay)
+- ✅ Student portal renders with class selector and print button
+- ✅ Keyboard shortcut "9" navigates to /student
+- ✅ Sidebar shows "Portail étudiant" in secondary nav
+- ✅ Command palette includes "Portail étudiant" section and action
+- ✅ All text in French
+- ✅ Brutalist aesthetic maintained (zero border-radius, monospace, dark mode)
+
+---
+
+# PlanningPro - Work Log for Task "15"
+
+## Date: 2026-06-03
+
+## Summary
+Implemented 4 UI features for the PlanningPro SaaS timetable management app:
+1. **Absences Page** - Full absence management page with stats, filters, table, and create dialog
+2. **Navigation Updates** - Added Absences to sidebar, mobile nav, keyboard shortcuts, and command palette
+3. **Holiday Calendar in Settings** - Visual timeline, holiday list, create dialog, and French holiday pre-fill
+4. **Demo Data Seed Button on Dashboard** - Quick-start card to load demo data
+
+---
+
+### 1. Absences Page
+
+#### New: `src/app/(app)/absences/page.tsx`
+- **Header**: "Gestion des absences" with UserX icon and "Signaler une absence" button
+- **Stats bar** (3 cards):
+  - Absences en cours (pending count)
+  - Approuvées ce mois (approved count this month)
+  - Taux de remplacement (% of absences with substitute teacher)
+- **Filter bar**:
+  - Search input by teacher name
+  - Status filter: Toutes, En attente, Approuvées, Rejetées
+  - Period filter: Toutes, Ce mois, Cette semaine
+- **Table** with columns: Enseignant, Dates, Raison, Remplaçant, Statut, Actions
+  - Color-coded reason dots: maladie=red, formation=blue, personnel=yellow, autre=gray
+  - Status badges: En attente (amber), Approuvée (green), Rejetée (red)
+  - Action buttons: Approuver/Rejeter/Supprimer for pending; Supprimer for others
+  - Loading spinner during actions
+- **Create dialog**: Teacher select, date range, reason select, substitute teacher (optional), notes textarea
+- **Empty state**: UserX icon with "Aucune absence signalée"
+- Data flow: GET/POST/PUT/DELETE `/api/absences?institutionId=xxx`
+
+---
+
+### 2. Navigation Updates
+
+#### Updated: `src/lib/store.ts`
+- Added `"absences"` to `AppSection` type union
+- Added `absences: "/absences"` to `sectionToPath` mapping
+- Added `"/absences": "absences"` to `pathToSection` mapping
+
+#### Updated: `src/components/layout/Sidebar.tsx`
+- Added "Absences" nav item with UserX icon after "Classes" (before "Paramètres")
+- Path: /absences
+
+#### Updated: `src/components/layout/MobileBottomNav.tsx`
+- Added Absences tab with UserX icon (label: "Abs.", path: /absences)
+
+#### Updated: `src/components/layout/AppShell.tsx`
+- Added `"8": "absences"` to `sectionShortcuts` map
+- Added `absences: "/absences"` to local `sectionToPath` map
+
+#### Updated: `src/components/shared/CommandPalette.tsx`
+- Added "Absences" section item with UserX icon and shortcut "8"
+- Added "Signaler une absence" quick action with UserX icon
+
+---
+
+### 3. Holiday Calendar in Settings
+
+#### Updated: `src/components/settings/SettingsView.tsx`
+- New imports: CalendarDays, Trash, Sparkles from lucide-react
+- New state: holidays, addHolidayOpen, holidayForm, addingHoliday, preFilling
+- New collapsible section "Calendrier scolaire" (defaultOpen=false):
+  - **Visual timeline**: Horizontal bar showing Sept-June school year with colored blocks
+    - Blue blocks for vacances scolaires
+    - Red markers for jours fériés
+    - Yellow markers for ponts
+    - Color legend below
+    - Dynamic positioning based on date calculation
+  - **Holiday list**: Scrollable list (max-h-64) with each entry showing:
+    - CalendarDays icon, name, date range
+    - Type badge (Vacances=blue, Jour férié=red, Pont=yellow, Autre=gray)
+    - Delete button
+  - **Action buttons**: "Ajouter une période" and "Préremplir"
+- **Add holiday dialog**: Name, start/end date, type select (Vacances scolaires, Jour férié, Pont, Autre)
+- **Préremplir feature**: Creates 14 default French holidays for the current year:
+  - Vacances: Toussaint, Noël, Hiver, Printemps, Été
+  - Jours fériés: 1er Mai, 8 Mai, 14 Juillet, 15 Août, 1er Novembre, 11 Novembre
+  - Easter-based: Lundi de Pâques, Ascension, Lundi de Pentecôte (computed with Butcher's algorithm)
+- Data flow: GET/POST/DELETE `/api/holidays?institutionId=xxx`
+
+---
+
+### 4. Demo Data Seed Button on Dashboard
+
+#### Updated: `src/components/dashboard/DashboardView.tsx`
+- New imports: Database, Loader2 from lucide-react; toast from sonner; Button from ui/button
+- New state: seeding (boolean)
+- New function: `handleSeedData` — POSTs to `/api/seed` with `{ institutionId }`, shows success toast, reloads page
+- New "Données de démonstration" card:
+  - Database icon, title "Données de démonstration"
+  - Description: "Charger des données d'exemple pour explorer toutes les fonctionnalités de PlanningPro"
+  - "Charger les données" button with Database icon
+  - Loading state with Loader2 spinner and "Chargement..." text
+  - Success toast with teacher/room/subject counts from response
+  - Page reloads after 500ms to refresh all data
+
+---
+
+### Verification Results
+- ✅ `bun run lint` — Only pre-existing errors (serve.js, page.tsx, cuid.ts)
+- ✅ GET /absences returns 200
+- ✅ GET /dashboard returns 200
+- ✅ GET /settings returns 200
+- ✅ GET /timetable returns 200
+- ✅ All text in French
+- ✅ Brutalist aesthetic maintained (zero border-radius, monospace, dark mode)
+- ✅ Keyboard shortcut "8" navigates to /absences
+- ✅ Sidebar shows Absences nav item after Classes
+- ✅ Command palette includes Absences section and "Signaler une absence" action
+
+---
+
+# PlanningPro - Work Log for Task "14"
+
+## Date: 2026-06-03
+
+## Summary
+Implemented 4 major features for the PlanningPro SaaS timetable management app:
+1. **Demo Data Seed API** - Comprehensive demo data creation endpoint
+2. **Absences API + Data Store Support** - Full CRUD for teacher absences with enrichment
+3. **Holidays API + Data Store Support** - Full CRUD for holidays with filtering
+4. **TimetableSlot Locking** - Added isLocked field to Prisma schema (already existed in data-store interface)
+
+---
+
+### 1. Demo Data Seed API
+
+#### New API Route: `src/app/api/seed/route.ts`
+- **POST** `/api/seed`: Creates comprehensive demo data for an institution
+  - Accepts `institutionId` as body param
+  - Validates institution exists
+  - Creates 15 teachers with realistic French/West African names, emails, specializations, and maxHoursPerWeek (18-22):
+    - Dr. Amadou Diallo - Mathématiques, Prof. Marie Dupont - Physique-Chimie, etc.
+  - Creates 20 rooms across 5 types:
+    - 3 Amphis (capacity 200-300, type amphi)
+    - 6 Salles TD 101-106 (capacity 40, type salle_td)
+    - 3 Labs (capacity 30, type labo with equipment lists)
+    - 3 Salles Info 201-203 (capacity 25, type salle_info with equipment)
+    - 5 Salles 301-305 (capacity 35, type salle_normale)
+  - Creates 15 subjects with codes (MATH101-MATH301), hoursPerWeek, types, semesters, coefficients
+  - Creates 8 classes (L1-L3 levels + Terminale/Première) with student counts and academic year
+  - Creates 32 teacher-subject links (each teacher linked to 2-3 subjects)
+  - Creates 46 class-subject links (each class with 5-7 subjects and hours per week)
+  - Returns summary JSON with all counts and created IDs
+  - Status 201 on success
+
+---
+
+### 2. Absences API + Data Store Support
+
+#### Updated: `src/lib/data-store.ts`
+- Added `dataStore.absence` with full CRUD methods:
+  - `findMany`: Filters by institutionId, teacherId, status; sorted by createdAt desc
+  - `findUnique`: Find by id
+  - `create`: Create with all absence fields
+  - `update`: Update with partial data
+  - `delete`: Delete by id
+- All methods follow hybrid pattern (Prisma when available, in-memory fallback)
+
+#### New API Route: `src/app/api/absences/route.ts`
+- **GET** `/api/absences?institutionId=xxx&teacherId=xxx&status=xxx`: List absences
+  - institutionId is required
+  - Optional filters: teacherId, status
+  - Enriches each absence with `teacherName` and `substituteTeacherName` by looking up teacher records
+- **POST** `/api/absences`: Create an absence
+  - Required: institutionId, teacherId, startDate, endDate, reason
+  - Optional: substituteTeacherId, status (defaults to "pending"), notes
+- **PUT** `/api/absences`: Update an absence
+  - Required: id
+  - Updatable: status, substituteTeacherId, notes
+- **DELETE** `/api/absences?id=xxx`: Delete an absence
+
+---
+
+### 3. Holidays API + Data Store Support
+
+#### Updated: `src/lib/data-store.ts`
+- Added `dataStore.holiday` with full CRUD methods:
+  - `findMany`: Filters by institutionId, year (prefix match on startDate/endDate), type; sorted by startDate asc
+  - `findUnique`: Find by id
+  - `create`: Create with all holiday fields
+  - `update`: Update with partial data
+  - `delete`: Delete by id
+- All methods follow hybrid pattern (Prisma when available, in-memory fallback)
+
+#### New API Route: `src/app/api/holidays/route.ts`
+- **GET** `/api/holidays?institutionId=xxx&year=2026&type=vacances`: List holidays
+  - institutionId is required
+  - Optional filters: year (matches startDate or endDate starting with year), type
+- **POST** `/api/holidays`: Create a holiday
+  - Required: institutionId, name, startDate, endDate, type
+- **PUT** `/api/holidays`: Update a holiday
+  - Required: id
+  - Updatable: name, startDate, endDate, type
+- **DELETE** `/api/holidays?id=xxx`: Delete a holiday
+
+---
+
+### 4. TimetableSlot Locking
+
+#### Already in Prisma Schema (`prisma/schema.prisma`)
+- `isLocked Boolean @default(false)` already exists on the TimetableSlot model
+- `isLocked?: boolean` already exists on TimetableSlotRecord interface in data-store.ts
+- Ran `bun run db:push` to ensure schema is synced — confirmed "Your database is now in sync"
+
+---
+
+### Verification Results
+- ✅ `bun run db:push` — Database synced successfully
+- ✅ `bun run lint` — No new errors (only pre-existing serve.js, page.tsx, cuid.ts errors)
+- ✅ POST /api/seed — Returns 201 with summary: 15 teachers, 20 rooms, 15 subjects, 8 classes, 32 teacher-subjects, 46 class-subjects
+- ✅ GET /api/absences — Returns enriched absences with teacherName and substituteTeacherName
+- ✅ POST /api/absences — Creates absence with all fields
+- ✅ PUT /api/absences — Updates status, notes, substituteTeacherId
+- ✅ DELETE /api/absences — Deletes absence by id
+- ✅ GET /api/holidays — Returns holidays with year and type filtering
+- ✅ POST /api/holidays — Creates holiday with all fields
+- ✅ PUT /api/holidays — Updates name, dates, type
+- ✅ DELETE /api/holidays — Deletes holiday by id
+- ✅ All error messages in French
+- ✅ Absence and holiday data persisted to /tmp/planning-pro-extra.json
+
+---
+
 # PlanningPro - Work Log for Task "11-12"
 
 ## Date: 2026-06-03

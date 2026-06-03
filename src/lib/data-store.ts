@@ -121,6 +121,32 @@ interface TimetableSlotRecord {
   dayOfWeek: number;
   startTime: string;
   endTime: string;
+  isLocked?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface AbsenceRecord {
+  id: string;
+  institutionId: string;
+  teacherId: string;
+  substituteTeacherId?: string | null;
+  startDate: string; // ISO date
+  endDate: string;   // ISO date
+  reason: string;    // "maladie", "formation", "personnel", "autre"
+  status: string;    // "pending", "approved", "rejected"
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface HolidayRecord {
+  id: string;
+  institutionId: string;
+  name: string;       // "Vacances de Noël", "Vacances de Pâques", etc.
+  startDate: string;  // ISO date
+  endDate: string;    // ISO date
+  type: string;       // "vacances", "jour_ferie", "pont", "autre"
   createdAt: string;
   updatedAt: string;
 }
@@ -213,6 +239,8 @@ const store = {
   users: [] as UserRecord[],
   userInstitutions: [] as UserInstitutionRecord[],
   auditLogs: [] as AuditLogRecord[],
+  absences: [] as AbsenceRecord[],
+  holidays: [] as HolidayRecord[],
 };
 
 // Try to load persisted data from /tmp
@@ -258,6 +286,14 @@ function loadFromDisk() {
       if (data.users) store.users = data.users;
       if (data.userInstitutions) store.userInstitutions = data.userInstitutions;
       if (data.auditLogs) store.auditLogs = data.auditLogs;
+    }
+
+    // Load absences & holidays
+    const extraPath = "/tmp/planning-pro-extra.json";
+    if (fs.existsSync(extraPath)) {
+      const data = JSON.parse(fs.readFileSync(extraPath, "utf-8"));
+      if (data.absences) store.absences = data.absences;
+      if (data.holidays) store.holidays = data.holidays;
     }
   } catch {
     // Ignore errors - start fresh
@@ -329,6 +365,21 @@ function saveToDisk() {
           users: store.users,
           userInstitutions: store.userInstitutions,
           auditLogs: store.auditLogs,
+        },
+        null,
+        2
+      ),
+      "utf-8"
+    );
+
+    // Save absences & holidays
+    const extraPath = "/tmp/planning-pro-extra.json";
+    fs.writeFileSync(
+      extraPath,
+      JSON.stringify(
+        {
+          absences: store.absences,
+          holidays: store.holidays,
         },
         null,
         2
@@ -2053,6 +2104,140 @@ export const dataStore = {
       store.auditLogs.push(record);
       saveToDisk();
       return record;
+    },
+  },
+
+  // ─── Absence ───────────────────────────────────────────────────
+
+  absence: {
+    findMany: async ({ where }: { where?: { institutionId?: string; teacherId?: string; status?: string } } = {}) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).absence) return (db as any).absence.findMany({ where: where as any });
+        } catch {}
+      }
+      let results = store.absences;
+      if (where?.institutionId) results = results.filter((a) => a.institutionId === where.institutionId);
+      if (where?.teacherId) results = results.filter((a) => a.teacherId === where.teacherId);
+      if (where?.status) results = results.filter((a) => a.status === where.status);
+      results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return results;
+    },
+    findUnique: async ({ where }: { where: { id: string } }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).absence) return (db as any).absence.findUnique({ where });
+        } catch {}
+      }
+      return store.absences.find((a) => a.id === where.id) || null;
+    },
+    create: async ({ data }: { data: Omit<AbsenceRecord, "id" | "createdAt" | "updatedAt"> }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).absence) return (db as any).absence.create({ data: data as any });
+        } catch {}
+      }
+      const now = new Date().toISOString();
+      const record: AbsenceRecord = { id: createId(), ...data, createdAt: now, updatedAt: now };
+      store.absences.push(record);
+      saveToDisk();
+      return record;
+    },
+    update: async ({ where, data }: { where: { id: string }; data: Partial<AbsenceRecord> }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).absence) return (db as any).absence.update({ where, data: data as any });
+        } catch {}
+      }
+      const idx = store.absences.findIndex((a) => a.id === where.id);
+      if (idx === -1) throw new Error("Absence non trouvée");
+      store.absences[idx] = { ...store.absences[idx], ...data, updatedAt: new Date().toISOString() };
+      saveToDisk();
+      return store.absences[idx];
+    },
+    delete: async ({ where }: { where: { id: string } }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).absence) return (db as any).absence.delete({ where });
+        } catch {}
+      }
+      const idx = store.absences.findIndex((a) => a.id === where.id);
+      if (idx === -1) throw new Error("Absence non trouvée");
+      const [deleted] = store.absences.splice(idx, 1);
+      saveToDisk();
+      return deleted;
+    },
+  },
+
+  // ─── Holiday ───────────────────────────────────────────────────
+
+  holiday: {
+    findMany: async ({ where }: { where?: { institutionId?: string; year?: string; type?: string } } = {}) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).holiday) return (db as any).holiday.findMany({ where: where as any });
+        } catch {}
+      }
+      let results = store.holidays;
+      if (where?.institutionId) results = results.filter((h) => h.institutionId === where.institutionId);
+      if (where?.year) results = results.filter((h) => h.startDate.startsWith(where.year!) || h.endDate.startsWith(where.year!));
+      if (where?.type) results = results.filter((h) => h.type === where.type);
+      results.sort((a, b) => a.startDate.localeCompare(b.startDate));
+      return results;
+    },
+    findUnique: async ({ where }: { where: { id: string } }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).holiday) return (db as any).holiday.findUnique({ where });
+        } catch {}
+      }
+      return store.holidays.find((h) => h.id === where.id) || null;
+    },
+    create: async ({ data }: { data: Omit<HolidayRecord, "id" | "createdAt" | "updatedAt"> }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).holiday) return (db as any).holiday.create({ data: data as any });
+        } catch {}
+      }
+      const now = new Date().toISOString();
+      const record: HolidayRecord = { id: createId(), ...data, createdAt: now, updatedAt: now };
+      store.holidays.push(record);
+      saveToDisk();
+      return record;
+    },
+    update: async ({ where, data }: { where: { id: string }; data: Partial<HolidayRecord> }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).holiday) return (db as any).holiday.update({ where, data: data as any });
+        } catch {}
+      }
+      const idx = store.holidays.findIndex((h) => h.id === where.id);
+      if (idx === -1) throw new Error("Vacance non trouvée");
+      store.holidays[idx] = { ...store.holidays[idx], ...data, updatedAt: new Date().toISOString() };
+      saveToDisk();
+      return store.holidays[idx];
+    },
+    delete: async ({ where }: { where: { id: string } }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).holiday) return (db as any).holiday.delete({ where });
+        } catch {}
+      }
+      const idx = store.holidays.findIndex((h) => h.id === where.id);
+      if (idx === -1) throw new Error("Vacance non trouvée");
+      const [deleted] = store.holidays.splice(idx, 1);
+      saveToDisk();
+      return deleted;
     },
   },
 };

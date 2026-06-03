@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Save, Trash2, AlertTriangle, ChevronDown, ChevronRight, CheckCircle2, RefreshCw, Download, Upload, Building2, Plus, LogOut, Shield } from "lucide-react";
+import { Save, Trash2, AlertTriangle, ChevronDown, ChevronRight, CheckCircle2, RefreshCw, Download, Upload, Building2, Plus, LogOut, Shield, CalendarDays, Trash, Sparkles } from "lucide-react";
 import { countries, institutionTypes, educationSystems, gradingSystems, semesterSystems } from "@/lib/countries";
 import { toast } from "sonner";
 import {
@@ -164,6 +164,135 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
   const [regenerating, setRegenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+
+  // Holiday calendar state
+  const [holidays, setHolidays] = useState<Array<{ id: string; name: string; startDate: string; endDate: string; type: string }>>([]);
+  const [addHolidayOpen, setAddHolidayOpen] = useState(false);
+  const [holidayForm, setHolidayForm] = useState({ name: "", startDate: "", endDate: "", type: "vacances" });
+  const [addingHoliday, setAddingHoliday] = useState(false);
+  const [preFilling, setPreFilling] = useState(false);
+
+  // Load holidays
+  useEffect(() => {
+    if (institutionId) {
+      fetch(`/api/holidays?institutionId=${institutionId}`)
+        .then((res) => res.ok ? res.json() : [])
+        .then((data) => setHolidays(data))
+        .catch(() => {});
+    }
+  }, [institutionId]);
+
+  const handleAddHoliday = async () => {
+    if (!holidayForm.name || !holidayForm.startDate || !holidayForm.endDate) {
+      toast.error("Veuillez remplir tous les champs");
+      return;
+    }
+    setAddingHoliday(true);
+    try {
+      const res = await fetch("/api/holidays", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ institutionId, ...holidayForm }),
+      });
+      if (res.ok) {
+        toast.success("Période ajoutée ✓");
+        setAddHolidayOpen(false);
+        setHolidayForm({ name: "", startDate: "", endDate: "", type: "vacances" });
+        const data = await fetch(`/api/holidays?institutionId=${institutionId}`).then((r) => r.json());
+        setHolidays(data);
+      } else {
+        toast.error("Erreur lors de l'ajout");
+      }
+    } catch {
+      toast.error("Erreur lors de l'ajout");
+    } finally {
+      setAddingHoliday(false);
+    }
+  };
+
+  const handleDeleteHoliday = async (id: string) => {
+    try {
+      const res = await fetch(`/api/holidays?id=${id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Période supprimée ✓");
+        setHolidays((prev) => prev.filter((h) => h.id !== id));
+      } else {
+        toast.error("Erreur lors de la suppression");
+      }
+    } catch {
+      toast.error("Erreur lors de la suppression");
+    }
+  };
+
+  const handlePreFillHolidays = async () => {
+    setPreFilling(true);
+    try {
+      const year = new Date().getFullYear();
+      // Compute Easter (Butcher's algorithm)
+      const a = year % 19;
+      const b = Math.floor(year / 100);
+      const c = year % 100;
+      const d = Math.floor(b / 4);
+      const e = b % 4;
+      const f = Math.floor((b + 8) / 25);
+      const g = Math.floor((b - f + 1) / 3);
+      const h = (19 * a + b - d - g + 15) % 30;
+      const i = Math.floor(c / 4);
+      const k = c % 4;
+      const l = (32 + 2 * e + 2 * i - h - k) % 7;
+      const m = Math.floor((a + 11 * h + 22 * l) / 451);
+      const month = Math.floor((h + l - 7 * m + 114) / 31);
+      const day = ((h + l - 7 * m + 114) % 31) + 1;
+      const easter = new Date(year, month - 1, day);
+      const fmt = (d: Date) => d.toISOString().split("T")[0];
+
+      const defaultHolidays = [
+        // Vacances scolaires
+        { name: "Vacances de la Toussaint", startDate: `${year}-10-18`, endDate: `${year}-11-03`, type: "vacances" },
+        { name: "Vacances de Noël", startDate: `${year}-12-20`, endDate: `${year + 1}-01-05`, type: "vacances" },
+        { name: "Vacances d'Hiver", startDate: `${year + 1}-02-07`, endDate: `${year + 1}-02-23`, type: "vacances" },
+        { name: "Vacances de Printemps", startDate: `${year + 1}-04-04`, endDate: `${year + 1}-04-20`, type: "vacances" },
+        { name: "Vacances d'Été", startDate: `${year + 1}-07-04`, endDate: `${year + 1}-08-31`, type: "vacances" },
+        // Jours fériés
+        { name: "1er Mai", startDate: fmt(new Date(year, 4, 1)), endDate: fmt(new Date(year, 4, 1)), type: "jour_ferie" },
+        { name: "8 Mai", startDate: fmt(new Date(year, 4, 8)), endDate: fmt(new Date(year, 4, 8)), type: "jour_ferie" },
+        { name: "14 Juillet", startDate: fmt(new Date(year, 6, 14)), endDate: fmt(new Date(year, 6, 14)), type: "jour_ferie" },
+        { name: "15 Août", startDate: fmt(new Date(year, 7, 15)), endDate: fmt(new Date(year, 7, 15)), type: "jour_ferie" },
+        { name: "1er Novembre", startDate: fmt(new Date(year, 10, 1)), endDate: fmt(new Date(year, 10, 1)), type: "jour_ferie" },
+        { name: "11 Novembre", startDate: fmt(new Date(year, 10, 11)), endDate: fmt(new Date(year, 10, 11)), type: "jour_ferie" },
+        // Easter-based
+        { name: "Lundi de Pâques", startDate: fmt(new Date(easter.getTime() + 86400000)), endDate: fmt(new Date(easter.getTime() + 86400000)), type: "jour_ferie" },
+        { name: "Ascension", startDate: fmt(new Date(easter.getTime() + 39 * 86400000)), endDate: fmt(new Date(easter.getTime() + 39 * 86400000)), type: "jour_ferie" },
+        { name: "Lundi de Pentecôte", startDate: fmt(new Date(easter.getTime() + 50 * 86400000)), endDate: fmt(new Date(easter.getTime() + 50 * 86400000)), type: "jour_ferie" },
+      ];
+
+      let created = 0;
+      for (const h of defaultHolidays) {
+        try {
+          const res = await fetch("/api/holidays", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ institutionId, ...h }),
+          });
+          if (res.ok) created++;
+        } catch { /* skip */ }
+      }
+      toast.success(`${created} période${created > 1 ? "s" : ""} ajoutée${created > 1 ? "s" : ""} ✓`);
+      const data = await fetch(`/api/holidays?institutionId=${institutionId}`).then((r) => r.json());
+      setHolidays(data);
+    } catch {
+      toast.error("Erreur lors du préremplissage");
+    } finally {
+      setPreFilling(false);
+    }
+  };
+
+  const holidayTypeConfig: Record<string, { label: string; className: string; timelineColor: string }> = {
+    vacances: { label: "Vacances", className: "bg-[#2563EB] text-white", timelineColor: "bg-[#2563EB]" },
+    jour_ferie: { label: "Jour férié", className: "bg-[#DC2626] text-white", timelineColor: "bg-[#DC2626]" },
+    pont: { label: "Pont", className: "bg-[#D97706] text-white", timelineColor: "bg-[#D97706]" },
+    autre: { label: "Autre", className: "bg-[#9A9898] text-white", timelineColor: "bg-[#9A9898]" },
+  };
 
   // Multi-institution management
   const { currentUser, setInstitutionId } = useAppStore();
@@ -842,6 +971,191 @@ rythme:         "${semesterSystems.find(s => s.value === form.semesterSystem)?.l
           </div>
         </div>
       </CollapsibleSection>
+
+      {/* School Calendar (Holidays) */}
+      <CollapsibleSection title="Calendrier scolaire" defaultOpen={false}>
+        <div className="space-y-4">
+          {/* Visual timeline */}
+          <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
+            <p className="text-[10px] font-bold text-[#9A9898] uppercase tracking-wider mb-2">Année scolaire — Sept à Juin</p>
+            <div className="flex items-center h-6 w-full bg-[#F8F7F7] dark:bg-[#1A1A1A] relative overflow-hidden">
+              {/* Month labels */}
+              {["Sep", "Oct", "Nov", "Déc", "Jan", "Fév", "Mar", "Avr", "Mai", "Jun"].map((m, i) => (
+                <div key={m} className="flex-1 text-center text-[8px] text-[#9A9898] border-r border-[#E5E5E5] dark:border-[#2A2A2A] last:border-0 relative">
+                  <span className="relative z-10">{m}</span>
+                </div>
+              ))}
+              {/* Holiday blocks overlay */}
+              {holidays.map((h) => {
+                const year = new Date().getFullYear();
+                const schoolYearStart = new Date(year, 8, 1); // Sept 1
+                const schoolYearEnd = new Date(year + 1, 5, 30); // June 30
+                const totalDays = (schoolYearEnd.getTime() - schoolYearStart.getTime()) / 86400000;
+                const start = new Date(h.startDate);
+                const end = new Date(h.endDate);
+                const leftPct = Math.max(0, ((start.getTime() - schoolYearStart.getTime()) / 86400000) / totalDays * 100);
+                const widthPct = Math.max(0.5, ((end.getTime() - start.getTime()) / 86400000 + 1) / totalDays * 100);
+                const cfg = holidayTypeConfig[h.type] || holidayTypeConfig.autre;
+                return (
+                  <div
+                    key={h.id}
+                    className={cn("absolute top-0 h-full opacity-60", cfg.timelineColor)}
+                    style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                    title={h.name}
+                  />
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-4 mt-2">
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 bg-[#2563EB]" />
+                <span className="text-[9px] text-[#9A9898]">Vacances</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 bg-[#DC2626]" />
+                <span className="text-[9px] text-[#9A9898]">Jour férié</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 bg-[#D97706]" />
+                <span className="text-[9px] text-[#9A9898]">Pont</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Holiday list */}
+          <div className="space-y-1 max-h-64 overflow-y-auto scrollbar-thin">
+            {holidays.length === 0 ? (
+              <p className="text-xs text-[#9A9898] py-4 text-center">Aucune période configurée</p>
+            ) : (
+              holidays.map((h) => {
+                const cfg = holidayTypeConfig[h.type] || holidayTypeConfig.autre;
+                return (
+                  <div key={h.id} className="flex items-center justify-between gap-3 py-2 px-3 border border-[#E5E5E5] dark:border-[#2A2A2A] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <CalendarDays className="h-3.5 w-3.5 text-[#9A9898] shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] truncate">{h.name}</p>
+                        <p className="text-[10px] text-[#9A9898]">
+                          {new Date(h.startDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })} → {new Date(h.endDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={cn("text-[10px] font-bold px-2 py-0.5", cfg.className)}>
+                        {cfg.label}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-[10px] h-6 gap-1 text-[#9A9898] hover:text-[#DC2626]"
+                        onClick={() => handleDeleteHoliday(h.id)}
+                      >
+                        <Trash className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              onClick={() => setAddHolidayOpen(true)}
+              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0 gap-1"
+            >
+              <Plus className="h-3 w-3" />
+              Ajouter une période
+            </Button>
+            <Button
+              onClick={handlePreFillHolidays}
+              disabled={preFilling}
+              variant="outline"
+              className="text-xs gap-1 border-[#E5E5E5] dark:border-[#2A2A2A]"
+            >
+              <Sparkles className="h-3 w-3" />
+              {preFilling ? "Chargement..." : "Préremplir"}
+            </Button>
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      {/* Add holiday dialog */}
+      <Dialog open={addHolidayOpen} onOpenChange={setAddHolidayOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold flex items-center gap-2">
+              <CalendarDays className="h-4 w-4" />
+              Ajouter une période
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="text-xs font-bold">Nom</Label>
+              <Input
+                value={holidayForm.name}
+                onChange={(e) => setHolidayForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Ex: Vacances de Noël"
+                className="mt-1 text-xs font-mono"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs font-bold">Date de début</Label>
+                <Input
+                  type="date"
+                  value={holidayForm.startDate}
+                  onChange={(e) => setHolidayForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                  className="mt-1 text-xs font-mono"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-bold">Date de fin</Label>
+                <Input
+                  type="date"
+                  value={holidayForm.endDate}
+                  onChange={(e) => setHolidayForm((prev) => ({ ...prev, endDate: e.target.value }))}
+                  className="mt-1 text-xs font-mono"
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Type</Label>
+              <Select
+                value={holidayForm.type}
+                onValueChange={(v) => setHolidayForm((prev) => ({ ...prev, type: v }))}
+              >
+                <SelectTrigger className="mt-1 text-xs font-mono">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="vacances">Vacances scolaires</SelectItem>
+                  <SelectItem value="jour_ferie">Jour férié</SelectItem>
+                  <SelectItem value="pont">Pont</SelectItem>
+                  <SelectItem value="autre">Autre</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAddHolidayOpen(false)}
+              className="text-xs border-[#E5E5E5] dark:border-[#2A2A2A]"
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleAddHoliday}
+              disabled={addingHoliday || !holidayForm.name || !holidayForm.startDate || !holidayForm.endDate}
+              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0 gap-1"
+            >
+              {addingHoliday ? "Ajout..." : "Ajouter"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* New institution dialog */}
       <Dialog open={addInstOpen} onOpenChange={setAddInstOpen}>
