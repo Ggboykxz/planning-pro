@@ -1,4 +1,4 @@
-import { dataStore, isDatabaseAvailable } from "@/lib/data-store";
+import { dataStore, isDatabaseAvailable, checkPlanLimit } from "@/lib/data-store";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -40,6 +40,17 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+
+    // Check plan limits
+    const limitCheck = await checkPlanLimit(body.institutionId, "teachers");
+    if (!limitCheck.allowed) {
+      return NextResponse.json({
+        error: `Limite atteinte : ${limitCheck.current}/${limitCheck.limit} enseignants pour le plan ${limitCheck.plan}`,
+        limit: limitCheck.limit,
+        current: limitCheck.current,
+        plan: limitCheck.plan,
+      }, { status: 403 });
+    }
 
     const teacher = await dataStore.teacher.create({
       data: {

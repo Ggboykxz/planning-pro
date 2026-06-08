@@ -15,6 +15,7 @@ import {
   BookOpen,
   GraduationCap,
   UserX,
+  CalendarDays,
   Settings,
   User,
   CreditCard,
@@ -38,6 +39,8 @@ const mainNavItems: { id: AppSection; label: string; path: string; icon: React.E
   { id: "subjects", label: "Matières", path: "/subjects", icon: BookOpen },
   { id: "classes", label: "Classes", path: "/classes", icon: GraduationCap },
   { id: "absences", label: "Absences", path: "/absences", icon: UserX },
+  { id: "holidays", label: "Vacances", path: "/holidays", icon: CalendarDays },
+  { id: "team", label: "Équipe", path: "/team", icon: Users },
   { id: "settings", label: "Paramètres", path: "/settings", icon: Settings },
 ];
 

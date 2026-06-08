@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/lib/store";
+import { Terminal } from "lucide-react";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -13,7 +14,14 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { setCurrentUser, setInstitutionId } = useAppStore();
+  const { setCurrentUser, setInstitutionId, currentUser } = useAppStore();
+
+  // If already logged in, redirect to dashboard
+  useEffect(() => {
+    if (currentUser) {
+      router.replace("/dashboard");
+    }
+  }, [currentUser, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +49,12 @@ export default function LoginPage() {
       }
       localStorage.setItem("planningpro_user", JSON.stringify(data.user));
 
-      router.push("/dashboard");
+      // Redirect based on role
+      if (data.user.role === "student") {
+        router.push("/student");
+      } else {
+        router.push("/dashboard");
+      }
     } catch {
       setError("Erreur de connexion au serveur");
     } finally {
@@ -49,19 +62,23 @@ export default function LoginPage() {
     }
   };
 
-  const handleDemoMode = () => {
-    router.push("/");
-  };
+  // Don't render login form if already authenticated
+  if (currentUser) {
+    return null;
+  }
 
   return (
     <div className="space-y-8">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC] tracking-tight font-mono">
-          PlanningPro_
-        </h1>
+        <Link href="/" className="inline-flex items-center gap-2">
+          <Terminal className="h-5 w-5 text-[#201D1D] dark:text-[#FDFCFC]" />
+          <span className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC] tracking-tight font-mono">
+            PlanningPro_
+          </span>
+        </Link>
         <p className="text-sm text-[#9A9898] font-mono">
-          Gestion d&apos;emplois du temps
+          Connectez-vous à votre compte
         </p>
       </div>
 
@@ -84,13 +101,16 @@ export default function LoginPage() {
             placeholder="votre@email.com"
             className="font-mono rounded-none border-[#E5E5E5] dark:border-[#2A2A2A] focus-visible:ring-0 focus-visible:border-[#201D1D] dark:focus-visible:border-[#FDFCFC]"
             required
+            autoComplete="email"
           />
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC] uppercase tracking-wider">
-            Mot de passe
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC] uppercase tracking-wider">
+              Mot de passe
+            </label>
+          </div>
           <Input
             type="password"
             value={password}
@@ -98,6 +118,7 @@ export default function LoginPage() {
             placeholder="••••••"
             className="font-mono rounded-none border-[#E5E5E5] dark:border-[#2A2A2A] focus-visible:ring-0 focus-visible:border-[#201D1D] dark:focus-visible:border-[#FDFCFC]"
             required
+            autoComplete="current-password"
           />
         </div>
 
@@ -109,25 +130,6 @@ export default function LoginPage() {
           {loading ? "Connexion..." : "Se connecter"}
         </Button>
       </form>
-
-      {/* Divider */}
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-[#E5E5E5] dark:border-[#2A2A2A]" />
-        </div>
-        <div className="relative flex justify-center text-xs">
-          <span className="bg-white dark:bg-[#0A0A0A] px-2 text-[#9A9898] font-mono">ou</span>
-        </div>
-      </div>
-
-      {/* Demo Mode */}
-      <Button
-        variant="outline"
-        onClick={handleDemoMode}
-        className="w-full font-mono rounded-none border-[#E5E5E5] dark:border-[#2A2A2A] hover:bg-[#E5E5E5] dark:hover:bg-[#2A2A2A] h-11"
-      >
-        Mode démo (sans compte)
-      </Button>
 
       {/* Links */}
       <div className="text-center space-y-3">

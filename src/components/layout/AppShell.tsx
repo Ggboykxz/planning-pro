@@ -3,12 +3,13 @@
 import { useEffect, useState, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { useAppStore, pathToSection, type AppSection } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { CommandPalette } from "@/components/shared/CommandPalette";
 import { KeyboardShortcuts } from "@/components/shared/KeyboardShortcuts";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { NotificationCenter } from "@/components/shared/NotificationCenter";
-import { Menu, Search } from "lucide-react";
+import { Menu, Search, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AIAssistant } from "@/components/shared/AIAssistant";
 
@@ -26,8 +27,8 @@ const sectionShortcuts: Record<string, AppSection> = {
   "4": "rooms",
   "5": "subjects",
   "6": "classes",
-  "7": "settings",
-  "8": "absences",
+  "7": "absences",
+  "8": "holidays",
   "9": "student",
 };
 
@@ -39,6 +40,8 @@ const sectionToPath: Record<AppSection, string> = {
   subjects: "/subjects",
   classes: "/classes",
   absences: "/absences",
+  holidays: "/holidays",
+  team: "/team",
   student: "/student",
   settings: "/settings",
   profile: "/profile",
@@ -47,10 +50,12 @@ const sectionToPath: Record<AppSection, string> = {
 };
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { currentSection, institutionId, setInstitutionId, setCurrentSection, setMobileMenuOpen, setCommandPaletteOpen } = useAppStore();
+  const { currentSection, institutionId, setInstitutionId, setCurrentSection, setMobileMenuOpen, setCommandPaletteOpen, currentUser, setCurrentUser } = useAppStore();
+  const { isAuthenticated, isLoading, restoreSession, logout, isStudent } = useAuth();
   const [institution, setInstitution] = useState<InstitutionData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingInstitution, setLoadingInstitution] = useState(true);
   const pathname = usePathname();
+  const sessionRestored = useRef(false);
 
   // Sync URL -> store on pathname change
   useEffect(() => {
@@ -60,10 +65,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, setCurrentSection]);
 
-  // Load institution on mount - only once
+  // Restore session on mount - only once
+  useEffect(() => {
+    if (sessionRestored.current) return;
+    sessionRestored.current = true;
+    restoreSession();
+  }, [restoreSession]);
+
+  // Load institution when user is authenticated - only once per institutionId
   const institutionLoaded = useRef(false);
   useEffect(() => {
-    if (institutionLoaded.current) return;
+    if (!isAuthenticated || !institutionId) return;
+    if (institutionLoaded.current && institution?.id === institutionId) return;
     institutionLoaded.current = true;
 
     const loadInstitution = async () => {
@@ -72,7 +85,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (res.ok) {
           const data = await res.json();
           if (data.length > 0) {
-            const inst = data[0];
+            // Find the current institution by ID, or fall back to first
+            const inst = data.find((i: InstitutionData) => i.id === institutionId) || data[0];
             setInstitution(inst);
             setInstitutionId(inst.id);
           }
@@ -80,16 +94,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       } catch (error) {
         console.error(error);
       } finally {
-        setLoading(false);
+        setLoadingInstitution(false);
       }
     };
 
     loadInstitution();
-  }, [setInstitutionId]);
+  }, [isAuthenticated, institutionId, setInstitutionId, institution?.id]);
 
   // If institutionId exists in store but we don't have institution data, fetch it
   useEffect(() => {
-    if (institutionId && !institution && institutionLoaded.current) {
+    if (institutionId && !institution && institutionLoaded.current && isAuthenticated) {
       fetch("/api/institution")
         .then((res) => {
           if (!res.ok) throw new Error("Failed to fetch institution");
@@ -97,12 +111,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         })
         .then((data) => {
           if (data.length > 0) {
-            setInstitution(data[0]);
+            const inst = data.find((i: InstitutionData) => i.id === institutionId) || data[0];
+            setInstitution(inst);
           }
         })
         .catch(console.error);
     }
-  }, [institutionId, institution]);
+  }, [institutionId, institution, isAuthenticated]);
 
   // Global keyboard shortcuts for section navigation
   useEffect(() => {
@@ -133,15 +148,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Loading state
-  if (loading || !institutionId || !institution) {
+  // Auth loading state
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0A0A0A]">
         <div className="text-center">
           <p className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] skeleton-shimmer inline-block px-2 font-mono">
             PlanningPro_
           </p>
-          <p className="text-xs text-[#9A9898] mt-1 font-mono">Chargement...</p>
+          <p className="text-xs text-[#9A9898] mt-1 font-mono">Vérification de la session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Not authenticated - should redirect (handled by useAuth)
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0A0A0A]">
+        <div className="text-center">
+          <p className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] font-mono">
+            PlanningPro_
+          </p>
+          <p className="text-xs text-[#9A9898] mt-1 font-mono">Redirection vers la connexion...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading institution data
+  if (loadingInstitution || !institutionId || !institution) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0A0A0A]">
+        <div className="text-center">
+          <p className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] skeleton-shimmer inline-block px-2 font-mono">
+            PlanningPro_
+          </p>
+          <p className="text-xs text-[#9A9898] mt-1 font-mono">Chargement de l&apos;établissement...</p>
         </div>
       </div>
     );
@@ -168,6 +211,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="text-[10px] text-[#9A9898] font-mono hidden sm:inline">
               {institution.name}
             </span>
+            {isStudent && (
+              <span className="text-[9px] font-bold font-mono bg-[#D97706]/10 text-[#D97706] px-2 py-0.5">
+                PORTE ÉTUDIANT
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -179,6 +227,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <kbd className="hidden sm:inline text-[9px] border border-[#E5E5E5] dark:border-[#2A2A2A] px-1 py-0.5">⌘K</kbd>
             </button>
             <NotificationCenter />
+            <button
+              onClick={logout}
+              className="p-1.5 text-[#9A9898] hover:text-[#DC2626] transition-colors"
+              aria-label="Se déconnecter"
+              title="Se déconnecter"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
           </div>
         </header>
 

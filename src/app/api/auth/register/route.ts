@@ -15,11 +15,15 @@ function simpleHash(str: string): string {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email, name, password, institutionName, institutionType, country } = body;
+    const { email, name, password, role, institutionName, institutionType, country } = body;
 
     if (!email || !name || !password) {
       return NextResponse.json({ error: "Email, nom et mot de passe requis" }, { status: 400 });
     }
+
+    // Validate role
+    const validRoles = ["admin", "teacher", "student"];
+    const userRole = validRoles.includes(role) ? role : "admin";
 
     if (password.length < 6) {
       return NextResponse.json({ error: "Le mot de passe doit contenir au moins 6 caractères" }, { status: 400 });
@@ -69,8 +73,8 @@ export async function POST(req: NextRequest) {
         email,
         name,
         passwordHash,
-        role: "admin",
-        institutionId,
+        role: userRole,
+        institutionId: userRole === "student" ? null : institutionId,
         plan: "free",
         isActive: true,
       },

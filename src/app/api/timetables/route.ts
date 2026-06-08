@@ -1,4 +1,4 @@
-import { dataStore, isDatabaseAvailable } from "@/lib/data-store";
+import { dataStore, isDatabaseAvailable, checkPlanLimit } from "@/lib/data-store";
 import { NextResponse } from "next/server";
 
 // Helper: Enrich a single slot with subject/teacher/room data (for fallback mode)
@@ -321,6 +321,19 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+
+    // Check plan limits for timetables
+    if (body.institutionId) {
+      const limitCheck = await checkPlanLimit(body.institutionId, "timetables");
+      if (!limitCheck.allowed) {
+        return NextResponse.json({
+          error: `Limite atteinte : ${limitCheck.current}/${limitCheck.limit} emplois du temps pour le plan ${limitCheck.plan}`,
+          limit: limitCheck.limit,
+          current: limitCheck.current,
+          plan: limitCheck.plan,
+        }, { status: 403 });
+      }
+    }
 
     // Deactivate existing timetables for this class
     if (body.classId) {

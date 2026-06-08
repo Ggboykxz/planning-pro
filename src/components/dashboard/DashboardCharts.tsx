@@ -25,6 +25,7 @@ const COLORS = {
     muted: "#E5E5E5",
     destructive: "#DC2626",
     warning: "#D97706",
+    success: "#16A34A",
   },
   dark: {
     primary: "#FDFCFC",
@@ -33,7 +34,29 @@ const COLORS = {
     muted: "#2A2A2A",
     destructive: "#EF4444",
     warning: "#F59E0B",
+    success: "#22C55E",
   },
+};
+
+// Colors for pie charts
+const PIE_COLORS = ["#201D1D", "#646262", "#9A9898", "#D97706", "#DC2626", "#16A34A", "#8B5CF6", "#EC4899"];
+const PIE_COLORS_DARK = ["#FDFCFC", "#9A9898", "#646262", "#F59E0B", "#EF4444", "#22C55E", "#A78BFA", "#F472B6"];
+
+// Subject type colors
+const TYPE_COLORS: Record<string, string> = {
+  cours: "#201D1D",
+  td: "#D97706",
+  tp: "#16A34A",
+  projet: "#8B5CF6",
+  autre: "#9A9898",
+};
+
+const TYPE_COLORS_DARK: Record<string, string> = {
+  cours: "#FDFCFC",
+  td: "#F59E0B",
+  tp: "#22C55E",
+  projet: "#A78BFA",
+  autre: "#646262",
 };
 
 interface DashboardChartsProps {
@@ -41,8 +64,9 @@ interface DashboardChartsProps {
   teacherWorkload: Array<{ id: string; name: string; assignedHours: number; maxHours: number; percentage: number }>;
   subjectData: Array<{ name: string; hours: number }>;
   completionRate: number;
-  // Weekly room data by day
   roomSlotsByDay?: Array<{ dayOfWeek: number; roomId: string; roomName: string; count: number }>;
+  subjectTypeBreakdown?: Array<{ name: string; value: number }>;
+  weeklyHoursDistribution?: Array<{ name: string; value: number }>;
 }
 
 export function DashboardCharts({
@@ -51,6 +75,8 @@ export function DashboardCharts({
   subjectData,
   completionRate,
   roomSlotsByDay,
+  subjectTypeBreakdown,
+  weeklyHoursDistribution,
 }: DashboardChartsProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -59,13 +85,11 @@ export function DashboardCharts({
   // 1. Weekly Room Utilization Bar Chart
   const weeklyRoomData = (() => {
     if (!roomSlotsByDay || roomSlotsByDay.length === 0) {
-      // Fallback: simple room usage
       return roomUtilization.slice(0, 6).map((r) => ({
         name: r.name,
         utilisation: r.usedSlots,
       }));
     }
-    // Group by day
     const dayMap = new Map<number, number>();
     for (const r of roomSlotsByDay) {
       dayMap.set(r.dayOfWeek, (dayMap.get(r.dayOfWeek) || 0) + r.count);
@@ -109,6 +133,16 @@ export function DashboardCharts({
     { name: "Complété", value: completionRate },
     { name: "Restant", value: 100 - completionRate },
   ];
+
+  // 5. Weekly hours distribution (pie chart)
+  const weeklyHoursData = weeklyHoursDistribution && weeklyHoursDistribution.length > 0
+    ? weeklyHoursDistribution
+    : [];
+
+  // 6. Subject type breakdown (pie chart)
+  const subjectTypeData = subjectTypeBreakdown && subjectTypeBreakdown.length > 0
+    ? subjectTypeBreakdown
+    : [];
 
   const chartFont = {
     fontFamily: "'Sarasa Mono SC', 'Liberation Mono', 'DejaVu Sans Mono', monospace",
@@ -192,6 +226,97 @@ export function DashboardCharts({
                   <Tooltip contentStyle={tooltipStyle} />
                   <Legend
                     wrapperStyle={{ fontSize: "10px", fontFamily: chartFont.fontFamily, color: palette.secondary }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        {/* ═══ NEW: Weekly Hours Distribution Pie Chart ═══ */}
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">
+            Répartition des heures par jour
+          </p>
+          {weeklyHoursData.length === 0 ? (
+            <p className="text-xs text-[#9A9898] py-8 text-center">Aucune donnée disponible</p>
+          ) : (
+            <div className="flex items-center justify-center">
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart style={chartFont}>
+                  <Pie
+                    data={weeklyHoursData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={2}
+                    dataKey="value"
+                    stroke={isDark ? "#111111" : "#FFFFFF"}
+                    strokeWidth={2}
+                  >
+                    {weeklyHoursData.map((entry, index) => (
+                      <Cell
+                        key={entry.name}
+                        fill={isDark ? PIE_COLORS_DARK[index % PIE_COLORS_DARK.length] : PIE_COLORS[index % PIE_COLORS.length]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value: number) => [`${value}h`, "Heures"]}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: "10px", fontFamily: chartFont.fontFamily, color: palette.secondary }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        {/* ═══ NEW: Subject Type Breakdown Pie Chart ═══ */}
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">
+            Types de matières
+          </p>
+          {subjectTypeData.length === 0 ? (
+            <p className="text-xs text-[#9A9898] py-8 text-center">Aucune matière configurée</p>
+          ) : (
+            <div className="flex items-center justify-center">
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart style={chartFont}>
+                  <Pie
+                    data={subjectTypeData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={2}
+                    dataKey="value"
+                    stroke={isDark ? "#111111" : "#FFFFFF"}
+                    strokeWidth={2}
+                  >
+                    {subjectTypeData.map((entry) => (
+                      <Cell
+                        key={entry.name}
+                        fill={isDark ? TYPE_COLORS_DARK[entry.name] || "#646262" : TYPE_COLORS[entry.name] || "#9A9898"}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Legend
+                    wrapperStyle={{ fontSize: "10px", fontFamily: chartFont.fontFamily, color: palette.secondary }}
+                    formatter={(value: string) => {
+                      const labels: Record<string, string> = {
+                        cours: "Cours",
+                        td: "TD",
+                        tp: "TP",
+                        projet: "Projet",
+                        autre: "Autre",
+                      };
+                      return labels[value] || value;
+                    }}
                   />
                 </PieChart>
               </ResponsiveContainer>

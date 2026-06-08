@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/lib/store";
+import { Terminal, GraduationCap, Shield, User } from "lucide-react";
 
 const INSTITUTION_TYPES = [
   { value: "universite", label: "Université" },
@@ -40,19 +41,33 @@ const COUNTRIES = [
   { value: "CH", label: "Suisse" },
 ];
 
+const ROLES = [
+  { value: "admin", label: "Administrateur", description: "Gérer l'établissement, les emplois du temps et l'équipe", icon: Shield },
+  { value: "teacher", label: "Enseignant", description: "Consulter et gérer mes cours et emplois du temps", icon: User },
+  { value: "student", label: "Étudiant", description: "Consulter mon emploi du temps et mes cours", icon: GraduationCap },
+];
+
 export default function RegisterPage() {
   const [step, setStep] = useState(1);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [role, setRole] = useState("admin");
   const [institutionName, setInstitutionName] = useState("");
   const [institutionType, setInstitutionType] = useState("universite");
   const [country, setCountry] = useState("FR");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { setCurrentUser, setInstitutionId } = useAppStore();
+  const { setCurrentUser, setInstitutionId, currentUser } = useAppStore();
+
+  // If already logged in, redirect to dashboard
+  useEffect(() => {
+    if (currentUser) {
+      router.replace("/dashboard");
+    }
+  }, [currentUser, router]);
 
   const validateStep1 = () => {
     if (!email || !name || !password) {
@@ -73,7 +88,58 @@ export default function RegisterPage() {
   const handleNextStep = () => {
     setError(null);
     if (validateStep1()) {
-      setStep(2);
+      // Students skip institution step
+      if (role === "student") {
+        handleRegisterDirectly();
+      } else {
+        setStep(2);
+      }
+    }
+  };
+
+  const handleRegisterDirectly = async () => {
+    setError(null);
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          name,
+          password,
+          role,
+          institutionName: undefined,
+          institutionType: undefined,
+          country,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Erreur d'inscription");
+        return;
+      }
+
+      // Store user in Zustand and localStorage
+      setCurrentUser(data.user);
+      if (data.institutionId) {
+        setInstitutionId(data.institutionId);
+      }
+      localStorage.setItem("planningpro_user", JSON.stringify(data.user));
+
+      // Redirect based on role
+      if (role === "student") {
+        router.push("/student");
+      } else {
+        router.push("/dashboard");
+      }
+    } catch {
+      setError("Erreur de connexion au serveur");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -90,6 +156,7 @@ export default function RegisterPage() {
           email,
           name,
           password,
+          role,
           institutionName: institutionName || undefined,
           institutionType,
           country,
@@ -110,7 +177,12 @@ export default function RegisterPage() {
       }
       localStorage.setItem("planningpro_user", JSON.stringify(data.user));
 
-      router.push("/dashboard");
+      // Redirect based on role
+      if (role === "student") {
+        router.push("/student");
+      } else {
+        router.push("/dashboard");
+      }
     } catch {
       setError("Erreur de connexion au serveur");
     } finally {
@@ -118,13 +190,21 @@ export default function RegisterPage() {
     }
   };
 
+  // Don't render register form if already authenticated
+  if (currentUser) {
+    return null;
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC] tracking-tight font-mono">
-          PlanningPro_
-        </h1>
+        <Link href="/" className="inline-flex items-center gap-2">
+          <Terminal className="h-5 w-5 text-[#201D1D] dark:text-[#FDFCFC]" />
+          <span className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC] tracking-tight font-mono">
+            PlanningPro_
+          </span>
+        </Link>
         <p className="text-sm text-[#9A9898] font-mono">
           Créer votre compte
         </p>
@@ -143,7 +223,7 @@ export default function RegisterPage() {
         </div>
       )}
 
-      {/* Step 1: Account */}
+      {/* Step 1: Account + Role */}
       {step === 1 && (
         <form
           onSubmit={(e) => {
@@ -156,6 +236,40 @@ export default function RegisterPage() {
             Étape 1 — Votre compte
           </p>
 
+          {/* Role Selection */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC] uppercase tracking-wider">
+              Je suis...
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {ROLES.map((r) => {
+                const Icon = r.icon;
+                const isSelected = role === r.value;
+                return (
+                  <button
+                    key={r.value}
+                    type="button"
+                    onClick={() => setRole(r.value)}
+                    className={`flex flex-col items-center gap-1.5 p-3 border text-center transition-colors ${
+                      isSelected
+                        ? "border-[#201D1D] dark:border-[#FDFCFC] bg-[#201D1D]/5 dark:bg-[#FDFCFC]/5"
+                        : "border-[#E5E5E5] dark:border-[#2A2A2A] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]"
+                    }`}
+                    style={{ borderRadius: 0 }}
+                  >
+                    <Icon className={`h-4 w-4 ${isSelected ? "text-[#201D1D] dark:text-[#FDFCFC]" : "text-[#9A9898]"}`} />
+                    <span className={`text-[10px] font-bold font-mono ${isSelected ? "text-[#201D1D] dark:text-[#FDFCFC]" : "text-[#9A9898]"}`}>
+                      {r.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-[#9A9898] font-mono">
+              {ROLES.find((r) => r.value === role)?.description}
+            </p>
+          </div>
+
           <div className="space-y-2">
             <label className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC] uppercase tracking-wider">
               Nom complet
@@ -167,6 +281,7 @@ export default function RegisterPage() {
               placeholder="Jean Dupont"
               className="font-mono rounded-none border-[#E5E5E5] dark:border-[#2A2A2A] focus-visible:ring-0 focus-visible:border-[#201D1D] dark:focus-visible:border-[#FDFCFC]"
               required
+              autoComplete="name"
             />
           </div>
 
@@ -181,6 +296,7 @@ export default function RegisterPage() {
               placeholder="votre@email.com"
               className="font-mono rounded-none border-[#E5E5E5] dark:border-[#2A2A2A] focus-visible:ring-0 focus-visible:border-[#201D1D] dark:focus-visible:border-[#FDFCFC]"
               required
+              autoComplete="email"
             />
           </div>
 
@@ -195,6 +311,7 @@ export default function RegisterPage() {
               placeholder="Minimum 6 caractères"
               className="font-mono rounded-none border-[#E5E5E5] dark:border-[#2A2A2A] focus-visible:ring-0 focus-visible:border-[#201D1D] dark:focus-visible:border-[#FDFCFC]"
               required
+              autoComplete="new-password"
             />
           </div>
 
@@ -209,19 +326,21 @@ export default function RegisterPage() {
               placeholder="••••••"
               className="font-mono rounded-none border-[#E5E5E5] dark:border-[#2A2A2A] focus-visible:ring-0 focus-visible:border-[#201D1D] dark:focus-visible:border-[#FDFCFC]"
               required
+              autoComplete="new-password"
             />
           </div>
 
           <Button
             type="submit"
+            disabled={loading}
             className="w-full font-mono rounded-none bg-[#201D1D] hover:bg-[#201D1D]/90 text-[#FDFCFC] dark:bg-[#FDFCFC] dark:text-[#0A0A0A] dark:hover:bg-[#FDFCFC]/90 h-11"
           >
-            Suivant →
+            {loading ? "Création..." : role === "student" ? "Créer le compte" : "Suivant →"}
           </Button>
         </form>
       )}
 
-      {/* Step 2: Institution */}
+      {/* Step 2: Institution (admin/teacher only) */}
       {step === 2 && (
         <form onSubmit={handleRegister} className="space-y-4">
           <p className="text-xs font-bold font-mono text-[#9A9898] uppercase tracking-wider">

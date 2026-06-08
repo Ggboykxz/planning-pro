@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAppStore, type AppSection } from "@/lib/store";
-import { LayoutDashboard, Calendar, Users, DoorOpen, BookOpen, GraduationCap, UserX, Settings } from "lucide-react";
+import { LayoutDashboard, Calendar, Users, DoorOpen, BookOpen, GraduationCap, UserX, UserCog, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const mobileNavItems: { id: AppSection; label: string; path: string; icon: React.ReactNode }[] = [
@@ -11,9 +11,9 @@ const mobileNavItems: { id: AppSection; label: string; path: string; icon: React
   { id: "timetable", label: "EDT", path: "/timetable", icon: <Calendar className="h-4 w-4" /> },
   { id: "teachers", label: "Ens.", path: "/teachers", icon: <Users className="h-4 w-4" /> },
   { id: "rooms", label: "Salles", path: "/rooms", icon: <DoorOpen className="h-4 w-4" /> },
-  { id: "subjects", label: "Mat.", path: "/subjects", icon: <BookOpen className="h-4 w-4" /> },
   { id: "classes", label: "Classes", path: "/classes", icon: <GraduationCap className="h-4 w-4" /> },
   { id: "absences", label: "Abs.", path: "/absences", icon: <UserX className="h-4 w-4" /> },
+  { id: "team", label: "Équipe", path: "/team", icon: <UserCog className="h-4 w-4" /> },
   { id: "settings", label: "Régl.", path: "/settings", icon: <Settings className="h-4 w-4" /> },
 ];
 

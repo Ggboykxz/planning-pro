@@ -221,6 +221,16 @@ interface AuditLogRecord {
   createdAt: string;
 }
 
+interface StudentInstitutionRecord {
+  id: string;
+  userId: string;
+  institutionId: string;
+  classId?: string | null;
+  studentNumber?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── In-Memory Store ─────────────────────────────────────────────
 
 const store = {
@@ -241,6 +251,7 @@ const store = {
   auditLogs: [] as AuditLogRecord[],
   absences: [] as AbsenceRecord[],
   holidays: [] as HolidayRecord[],
+  studentInstitutions: [] as StudentInstitutionRecord[],
 };
 
 // Try to load persisted data from /tmp
@@ -294,6 +305,7 @@ function loadFromDisk() {
       const data = JSON.parse(fs.readFileSync(extraPath, "utf-8"));
       if (data.absences) store.absences = data.absences;
       if (data.holidays) store.holidays = data.holidays;
+      if (data.studentInstitutions) store.studentInstitutions = data.studentInstitutions;
     }
   } catch {
     // Ignore errors - start fresh
@@ -372,7 +384,7 @@ function saveToDisk() {
       "utf-8"
     );
 
-    // Save absences & holidays
+    // Save absences & holidays & student institutions
     const extraPath = "/tmp/planning-pro-extra.json";
     fs.writeFileSync(
       extraPath,
@@ -380,6 +392,7 @@ function saveToDisk() {
         {
           absences: store.absences,
           holidays: store.holidays,
+          studentInstitutions: store.studentInstitutions,
         },
         null,
         2
@@ -2060,6 +2073,23 @@ export const dataStore = {
       saveToDisk();
       return record;
     },
+    update: async ({ where, data }: { where: { id: string }; data: Partial<UserInstitutionRecord> }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).userInstitution) return db.userInstitution.update({ where, data: data as any });
+        } catch {}
+      }
+      const idx = store.userInstitutions.findIndex(ui => ui.id === where.id);
+      if (idx === -1) throw new Error("UserInstitution non trouvé");
+      store.userInstitutions[idx] = {
+        ...store.userInstitutions[idx],
+        ...data,
+        updatedAt: new Date().toISOString(),
+      };
+      saveToDisk();
+      return store.userInstitutions[idx];
+    },
     delete: async ({ where }: { where: { id: string } }) => {
       if (await isDatabaseAvailable()) {
         try {
@@ -2240,4 +2270,144 @@ export const dataStore = {
       return deleted;
     },
   },
+
+  // ─── StudentInstitution ──────────────────────────────────────────
+
+  studentInstitution: {
+    findMany: async ({ where }: { where?: { userId?: string; institutionId?: string } } = {}) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).studentInstitution) return (db as any).studentInstitution.findMany({ where: where as any });
+        } catch {}
+      }
+      loadFromDisk();
+      let results = store.studentInstitutions;
+      if (where?.userId) results = results.filter((si) => si.userId === where.userId);
+      if (where?.institutionId) results = results.filter((si) => si.institutionId === where.institutionId);
+      return results;
+    },
+    findUnique: async ({ where }: { where: { id: string } }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).studentInstitution) return (db as any).studentInstitution.findUnique({ where });
+        } catch {}
+      }
+      loadFromDisk();
+      return store.studentInstitutions.find((si) => si.id === where.id) || null;
+    },
+    create: async ({ data }: { data: Omit<StudentInstitutionRecord, "id" | "createdAt" | "updatedAt"> }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).studentInstitution) return (db as any).studentInstitution.create({ data: data as any });
+        } catch {}
+      }
+      const now = new Date().toISOString();
+      const record: StudentInstitutionRecord = { id: createId(), ...data, createdAt: now, updatedAt: now };
+      store.studentInstitutions.push(record);
+      saveToDisk();
+      return record;
+    },
+    update: async ({ where, data }: { where: { id: string }; data: Partial<StudentInstitutionRecord> }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).studentInstitution) return (db as any).studentInstitution.update({ where, data: data as any });
+        } catch {}
+      }
+      const idx = store.studentInstitutions.findIndex((si) => si.id === where.id);
+      if (idx === -1) throw new Error("StudentInstitution non trouvé");
+      store.studentInstitutions[idx] = {
+        ...store.studentInstitutions[idx],
+        ...data,
+        updatedAt: new Date().toISOString(),
+      };
+      saveToDisk();
+      return store.studentInstitutions[idx];
+    },
+    delete: async ({ where }: { where: { id: string } }) => {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          if ((db as any).studentInstitution) return (db as any).studentInstitution.delete({ where });
+        } catch {}
+      }
+      const idx = store.studentInstitutions.findIndex((si) => si.id === where.id);
+      if (idx === -1) throw new Error("StudentInstitution non trouvé");
+      const [deleted] = store.studentInstitutions.splice(idx, 1);
+      saveToDisk();
+      return deleted;
+    },
+  },
 };
+
+// ─── Plan Limits ────────────────────────────────────────────────
+
+const PLAN_LIMITS: Record<string, Record<string, number>> = {
+  free: {
+    teachers: 5,
+    rooms: 5,
+    timetables: 3,
+    institutions: 1,
+  },
+  pro: {
+    teachers: 50,
+    rooms: 50,
+    timetables: Infinity,
+    institutions: 3,
+  },
+  enterprise: {
+    teachers: Infinity,
+    rooms: Infinity,
+    timetables: Infinity,
+    institutions: Infinity,
+  },
+};
+
+export async function checkPlanLimit(
+  institutionId: string,
+  resourceType: "teachers" | "rooms" | "timetables" | "institutions"
+): Promise<{ allowed: boolean; current: number; limit: number; plan: string }> {
+  // Find the institution's owner (first admin user linked to this institution)
+  const userInst = store.userInstitutions.find(
+    (ui) => ui.institutionId === institutionId && ui.role === "admin"
+  );
+  let plan = "free";
+  if (userInst) {
+    const user = store.users.find((u) => u.id === userInst.userId);
+    if (user) {
+      plan = user.plan || "free";
+    }
+  }
+
+  const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+  const limit = limits[resourceType];
+
+  // Count current resources for the institution
+  let current = 0;
+  if (resourceType === "teachers") {
+    current = store.teachers.filter((t) => t.institutionId === institutionId).length;
+  } else if (resourceType === "rooms") {
+    current = store.rooms.filter((r) => r.institutionId === institutionId).length;
+  } else if (resourceType === "timetables") {
+    current = store.timetables.filter((t) => t.institutionId === institutionId).length;
+  } else if (resourceType === "institutions") {
+    // Count institutions linked to the user
+    if (userInst) {
+      current = store.userInstitutions.filter((ui) => ui.userId === userInst.userId).length;
+    }
+  }
+
+  return {
+    allowed: current < limit,
+    current,
+    limit: limit === Infinity ? -1 : limit,
+    plan,
+  };
+}
+
+export function getPlanLimits(plan: string): Record<string, number> {
+  return PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+}

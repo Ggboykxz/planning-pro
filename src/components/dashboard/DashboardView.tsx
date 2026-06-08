@@ -1,17 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { StatBlock } from "./StatBlock";
 import { QuickActions } from "./QuickActions";
 import { DashboardCharts } from "./DashboardCharts";
 import { dayNames } from "@/lib/countries";
 import { useAppStore, type AppSection } from "@/lib/store";
-import { UserPlus, DoorOpen, BookOpen, Sparkles, CheckCircle2, Circle, ChevronRight, Database, Loader2, Calendar, Clock, MapPin, Users, AlertTriangle } from "lucide-react";
+import {
+  UserPlus, DoorOpen, BookOpen, Sparkles, CheckCircle2, Circle, ChevronRight,
+  Database, Calendar, Clock, MapPin, Users, AlertTriangle,
+  Activity, Umbrella, Shield, Zap, ArrowRight, TrendingUp, RefreshCw
+} from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { getSubjectColor } from "@/lib/subject-colors";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+
+interface ActivityItem {
+  id: string;
+  action: string;
+  entity: string;
+  details: string | null;
+  createdAt: string;
+  userName: string;
+}
+
+interface HolidayItem {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  type: string;
+}
+
+interface AlertItem {
+  type: "conflict" | "overwork" | "capacity";
+  severity: "error" | "warning" | "info";
+  message: string;
+}
+
+interface PlanUsageItem {
+  current: number;
+  limit: number;
+}
+
+interface PlanUsage {
+  plan: string;
+  teachers: PlanUsageItem;
+  rooms: PlanUsageItem;
+  timetables: PlanUsageItem;
+  institutions: PlanUsageItem;
+}
 
 interface DashboardData {
   teacherCount: number;
@@ -29,6 +69,12 @@ interface DashboardData {
   weeklyStats: { totalSlots: number; totalHours: number; fillRate: number; conflictCount: number };
   upcomingSlots: Array<{ dayOfWeek: number; startTime: string; endTime: string; subjectName: string; teacherName: string; roomName: string; className: string }>;
   roomSlotsByDay: Array<{ dayOfWeek: number; roomId: string; roomName: string; count: number }>;
+  recentActivity: ActivityItem[];
+  upcomingHolidays: HolidayItem[];
+  subjectTypeBreakdown: Array<{ name: string; value: number }>;
+  weeklyHoursDistribution: Array<{ name: string; value: number }>;
+  alerts: AlertItem[];
+  planUsage: PlanUsage;
 }
 
 interface DashboardViewProps {
@@ -42,20 +88,96 @@ interface ChecklistItem {
   count: number;
 }
 
+// Animated counter hook
+function useAnimatedCounter(target: number, duration: number = 800) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (target === 0) return;
+    let start = 0;
+    const stepTime = Math.max(Math.floor(duration / target), 30);
+    const timer = setInterval(() => {
+      start += 1;
+      setCount(start);
+      if (start >= target) clearInterval(timer);
+    }, stepTime);
+    return () => clearInterval(timer);
+  }, [target, duration]);
+  // Reset count when target changes to 0
+  if (target === 0 && count !== 0) {
+    // Will be caught on next render
+  }
+  return target === 0 ? 0 : count;
+}
+
+// Animated stat block
+function AnimatedStatBlock({ label, value, sublabel, onClick }: { label: string; value: number; sublabel?: string; onClick?: () => void }) {
+  const animatedValue = useAnimatedCounter(value);
+  return <StatBlock label={label} value={animatedValue} sublabel={sublabel} onClick={onClick} />;
+}
+
+// Activity icon mapper
+function getActivityIcon(action: string, entity: string) {
+  if (action === "create" || action === "CREATE") return <span className="text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5">+</span>;
+  if (action === "update" || action === "UPDATE") return <span className="text-[10px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-1.5 py-0.5">~</span>;
+  if (action === "delete" || action === "DELETE") return <span className="text-[10px] font-bold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 px-1.5 py-0.5">-</span>;
+  if (action === "generate" || action === "GENERATE") return <Sparkles className="h-3 w-3 text-[#D97706]" />;
+  return <Activity className="h-3 w-3 text-[#9A9898]" />;
+}
+
+// Entity name mapper
+function getEntityLabel(entity: string): string {
+  const labels: Record<string, string> = {
+    teacher: "Enseignant",
+    room: "Salle",
+    subject: "Matière",
+    class: "Classe",
+    timetable: "Emploi du temps",
+    institution: "Établissement",
+    timeslot: "Créneau",
+    user: "Utilisateur",
+    absence: "Absence",
+    holiday: "Vacance",
+  };
+  return labels[entity] || entity;
+}
+
+// Action name mapper
+function getActionLabel(action: string): string {
+  const labels: Record<string, string> = {
+    create: "Créé",
+    CREATE: "Créé",
+    update: "Modifié",
+    UPDATE: "Modifié",
+    delete: "Supprimé",
+    DELETE: "Supprimé",
+    generate: "Généré",
+    GENERATE: "Généré",
+    login: "Connexion",
+    LOGIN: "Connexion",
+    import: "Importé",
+    IMPORT: "Importé",
+    export: "Exporté",
+    EXPORT: "Exporté",
+  };
+  return labels[action] || action;
+}
+
+// Severity icon
+function getSeverityIcon(severity: string) {
+  if (severity === "error") return <AlertTriangle className="h-3.5 w-3.5 text-[#DC2626] shrink-0" />;
+  if (severity === "warning") return <AlertTriangle className="h-3.5 w-3.5 text-[#D97706] shrink-0" />;
+  return <Shield className="h-3.5 w-3.5 text-[#9A9898] shrink-0" />;
+}
+
 export function DashboardView({ institutionId }: DashboardViewProps) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [subjectData, setSubjectData] = useState<Array<{ name: string; hours: number }>>([]);
-  const { setCurrentSection, setTimetableViewMode, setSelectedClassId, addNotification } = useAppStore();
-  const router = useRouter();
+  const { currentUser, setCurrentSection } = useAppStore();
 
-  useEffect(() => {
-    loadDashboard();
-  }, [institutionId]);
-
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
     try {
-      const res = await fetch(`/api/dashboard?institutionId=${institutionId}`);
+      const res = await fetch(`/api/dashboard?institutionId=${institutionId}&userId=${currentUser?.id || ""}`);
       if (res.ok) {
         const d = await res.json();
         setData(d);
@@ -76,42 +198,32 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [institutionId, currentUser?.id]);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
 
   const quickActions = [
     { label: "Ajouter un enseignant", onClick: () => setCurrentSection("teachers"), icon: <UserPlus className="h-3.5 w-3.5" /> },
     { label: "Créer une salle", onClick: () => setCurrentSection("rooms"), icon: <DoorOpen className="h-3.5 w-3.5" /> },
     { label: "Nouvelle matière", onClick: () => setCurrentSection("subjects"), icon: <BookOpen className="h-3.5 w-3.5" /> },
     { label: "Générer emploi du temps", onClick: () => setCurrentSection("timetable"), icon: <Sparkles className="h-3.5 w-3.5" /> },
+    { label: "Voir les conflits", onClick: () => setCurrentSection("timetable"), icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+    { label: "Exporter les données", onClick: () => setCurrentSection("settings"), icon: <Database className="h-3.5 w-3.5" /> },
   ];
 
-  const [seeding, setSeeding] = useState(false);
+  // Auto-refresh every 30 seconds
+  const [refreshing, setRefreshing] = useState(false);
 
-  const handleSeedData = async () => {
-    setSeeding(true);
-    try {
-      const res = await fetch("/api/seed", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ institutionId }),
-      });
-      if (res.ok) {
-        const result = await res.json();
-        toast.success("Données de démonstration chargées ✓", {
-          description: `${result.teacherCount || 0} enseignants, ${result.roomCount || 0} salles, ${result.subjectCount || 0} matières`,
-        });
-        // Reload the page to refresh all data
-        setTimeout(() => window.location.reload(), 500);
-      } else {
-        const err = await res.json();
-        toast.error(err.error || "Erreur lors du chargement des données");
-      }
-    } catch {
-      toast.error("Erreur lors du chargement des données");
-    } finally {
-      setSeeding(false);
-    }
-  };
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      setRefreshing(true);
+      await loadDashboard();
+      setRefreshing(false);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [loadDashboard]);
 
   // Setup checklist
   const checklist: ChecklistItem[] = data
@@ -127,6 +239,19 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
   const allConfigured = checklist.length > 0 && checklist.every((item) => item.done);
   const incompleteCount = checklist.filter((item) => !item.done).length;
 
+  // Current date
+  const today = new Date();
+  const dateStr = today.toLocaleDateString("fr-FR", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  // Plan label
+  const planLabels: Record<string, string> = { free: "Gratuit", pro: "Pro", enterprise: "Enterprise" };
+  const currentPlan = data?.planUsage?.plan || currentUser?.plan || "free";
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -134,7 +259,6 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
           <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Tableau de bord</h1>
           <p className="text-xs text-[#9A9898] mt-1">Chargement...</p>
         </div>
-        {/* Shimmer stat blocks */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
@@ -143,23 +267,12 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
             </div>
           ))}
         </div>
-        {/* Shimmer card outlines */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {[1, 2].map((i) => (
             <div key={i} className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
               <div className="h-3 skeleton-shimmer w-40 mb-4" />
               <div className="h-4 skeleton-shimmer w-24 mb-2" />
               <div className="h-1 skeleton-shimmer w-full" />
-            </div>
-          ))}
-        </div>
-        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-          <div className="h-3 skeleton-shimmer w-48 mb-4" />
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="flex items-center gap-3 mb-3">
-              <div className="h-3 skeleton-shimmer w-32" />
-              <div className="h-1 skeleton-shimmer flex-1" />
-              <div className="h-3 skeleton-shimmer w-16" />
             </div>
           ))}
         </div>
@@ -171,14 +284,85 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Tableau de bord</h1>
-        <p className="text-xs text-[#9A9898] mt-1">
-          Vue d&apos;ensemble de votre établissement
-        </p>
+      {/* ═══ WELCOME BANNER ═══ */}
+      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+              Bonjour, {currentUser?.name || "Utilisateur"}
+            </h1>
+            <p className="text-xs text-[#9A9898] mt-1 capitalize">{dateStr}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-[10px] text-[#9A9898]">Plan actuel</p>
+              <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+                {planLabels[currentPlan] || "Gratuit"}
+              </p>
+            </div>
+            <div className={`h-8 w-8 flex items-center justify-center border ${
+              currentPlan === "pro"
+                ? "border-[#D97706] text-[#D97706]"
+                : currentPlan === "enterprise"
+                ? "border-[#8B5CF6] text-[#8B5CF6]"
+                : "border-[#E5E5E5] dark:border-[#2A2A2A] text-[#9A9898]"
+            }`}>
+              {currentPlan === "enterprise" ? <Zap className="h-4 w-4" /> : currentPlan === "pro" ? <TrendingUp className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
+            </div>
+          </div>
+        </div>
+        {/* Quick summary row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
+          <div className="border border-[#F8F7F7] dark:border-[#1A1A1A] p-3">
+            <p className="text-lg font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.teacherCount}</p>
+            <p className="text-[10px] text-[#9A9898]">Enseignants</p>
+          </div>
+          <div className="border border-[#F8F7F7] dark:border-[#1A1A1A] p-3">
+            <p className="text-lg font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.roomCount}</p>
+            <p className="text-[10px] text-[#9A9898]">Salles</p>
+          </div>
+          <div className="border border-[#F8F7F7] dark:border-[#1A1A1A] p-3">
+            <p className="text-lg font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.timetableCount}</p>
+            <p className="text-[10px] text-[#9A9898]">Emplois du temps</p>
+          </div>
+          <div className="border border-[#F8F7F7] dark:border-[#1A1A1A] p-3">
+            <p className={`text-lg font-bold ${data.conflictCount > 0 ? "text-[#DC2626]" : "text-[#201D1D] dark:text-[#FDFCFC]"}`}>{data.conflictCount}</p>
+            <p className="text-[10px] text-[#9A9898]">Conflits</p>
+          </div>
+        </div>
       </div>
 
-      {/* Setup Checklist */}
+      {/* ═══ ALERTS / WARNINGS ═══ */}
+      {data.alerts && data.alerts.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-bold text-[#9A9898]">Alertes</p>
+          {data.alerts.map((alert, i) => (
+            <div
+              key={i}
+              className={`flex items-center gap-3 p-3 border ${
+                alert.severity === "error"
+                  ? "border-[#DC2626] bg-red-50 dark:bg-red-950/20"
+                  : alert.severity === "warning"
+                  ? "border-[#D97706] bg-amber-50 dark:bg-amber-950/20"
+                  : "border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#F8F7F7] dark:bg-[#1A1A1A]"
+              }`}
+            >
+              {getSeverityIcon(alert.severity)}
+              <p className="text-xs text-[#201D1D] dark:text-[#FDFCFC] flex-1">{alert.message}</p>
+              {alert.type === "conflict" && (
+                <button
+                  onClick={() => setCurrentSection("timetable")}
+                  className="text-[10px] text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] flex items-center gap-1"
+                >
+                  Voir <ArrowRight className="h-2.5 w-2.5" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ═══ SETUP CHECKLIST ═══ */}
       {!allConfigured && (
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
           <div className="flex items-center justify-between mb-4">
@@ -192,7 +376,6 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
               {checklist.filter((c) => c.done).length}/{checklist.length}
             </div>
           </div>
-          {/* Progress bar */}
           <div className="h-1 bg-[#F8F7F7] dark:bg-[#1A1A1A] w-full mb-4">
             <div
               className="h-full bg-[#201D1D] dark:bg-[#FDFCFC] transition-all duration-500"
@@ -215,9 +398,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
                 <span className={`text-xs flex-1 ${item.done ? "text-[#646262] dark:text-[#9A9898] line-through" : "text-[#201D1D] dark:text-[#FDFCFC] font-bold"}`}>
                   {item.label}
                 </span>
-                <span className="text-[10px] text-[#9A9898]">
-                  {item.count > 0 ? `${item.count}` : "0"}
-                </span>
+                <span className="text-[10px] text-[#9A9898]">{item.count > 0 ? `${item.count}` : "0"}</span>
                 <ChevronRight className="h-3 w-3 text-[#9A9898] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
               </button>
             ))}
@@ -225,90 +406,63 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         </div>
       )}
 
-      {/* Quick Actions */}
+      {/* ═══ QUICK ACTIONS ═══ */}
       <div>
         <p className="text-xs font-bold text-[#9A9898] mb-2">Actions rapides</p>
         <QuickActions actions={quickActions} />
       </div>
 
-      {/* Demo Data Card */}
-      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Database className="h-5 w-5 text-[#9A9898] shrink-0" />
-            <div>
-              <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Données de démonstration</p>
-              <p className="text-[10px] text-[#9A9898] mt-0.5">
-                Charger des données d&apos;exemple pour explorer toutes les fonctionnalités de PlanningPro
-              </p>
-            </div>
-          </div>
-          <Button
-            onClick={handleSeedData}
-            disabled={seeding}
-            className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0 gap-1 shrink-0"
-          >
-            {seeding ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Chargement...
-              </>
-            ) : (
-              <>
-                <Database className="h-3 w-3" />
-                Charger les données
-              </>
-            )}
-          </Button>
+      {/* ═══ AUTO-REFRESH INDICATOR ═══ */}
+      {refreshing && (
+        <div className="flex items-center gap-2 text-[10px] text-[#9A9898] font-mono">
+          <RefreshCw className="h-3 w-3 animate-spin" />
+          Actualisation...
         </div>
-      </div>
+      )}
 
-      {/* Stats */}
+      {/* ═══ ANIMATED STATS ROW ═══ */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        <StatBlock
+        <AnimatedStatBlock
           label="Enseignants"
           value={data.teacherCount}
           sublabel={`${data.teacherWorkload.filter((t) => t.percentage > 80).length} avec charge élevée`}
           onClick={() => setCurrentSection("teachers")}
         />
-        <StatBlock
+        <AnimatedStatBlock
           label="Salles"
           value={data.roomCount}
           sublabel={`${data.roomUtilization.filter((r) => r.usedSlots > 0).length} utilisées`}
           onClick={() => setCurrentSection("rooms")}
         />
-        <StatBlock
+        <AnimatedStatBlock
           label="Matières"
           value={data.subjectCount}
           onClick={() => setCurrentSection("subjects")}
         />
-        <StatBlock
+        <AnimatedStatBlock
           label="Classes"
           value={data.classCount}
           onClick={() => setCurrentSection("classes")}
         />
-        <StatBlock
+        <AnimatedStatBlock
           label="Emplois du temps"
           value={data.timetableCount}
           onClick={() => setCurrentSection("timetable")}
         />
-        <StatBlock
+        <AnimatedStatBlock
           label="Conflits"
           value={data.conflictCount}
           sublabel={data.conflictCount === 0 ? "Aucun conflit" : "À résoudre"}
         />
       </div>
 
-      {/* Completion & Conflicts */}
+      {/* ═══ COMPLETION & CONFLICTS ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Completion Rate */}
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
           <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Taux de complétion</p>
           <div className="flex items-baseline gap-2">
             <span className="text-4xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.completionRate}%</span>
-            <span className="text-xs text-[#9A9898]">
-              {data.completionRate === 100 ? "complété" : "en cours"}
-            </span>
+            <span className="text-xs text-[#9A9898]">{data.completionRate === 100 ? "complété" : "en cours"}</span>
           </div>
           <div className="mt-3 h-1 bg-[#F8F7F7] dark:bg-[#1A1A1A] w-full">
             <div
@@ -320,8 +474,6 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
             {data.timetableCount} emploi(s) du temps sur {data.classCount} classe(s)
           </p>
         </div>
-
-        {/* Conflicts */}
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
           <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Conflits détectés</p>
           {data.conflictCount === 0 ? (
@@ -336,9 +488,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
                   <span className="text-[10px] font-bold bg-[#DC2626] text-white px-1.5 py-0.5 shrink-0">ENSEIGNANT</span>
                   <div className="text-xs">
                     <p className="font-bold text-[#201D1D] dark:text-[#FDFCFC]">{c.teacherName}</p>
-                    <p className="text-[#9A9898]">
-                      {dayNames[c.dayOfWeek]} {c.time} — {c.classes.join(" vs ")}
-                    </p>
+                    <p className="text-[#9A9898]">{dayNames[c.dayOfWeek]} {c.time} — {c.classes.join(" vs ")}</p>
                   </div>
                 </div>
               ))}
@@ -347,9 +497,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
                   <span className="text-[10px] font-bold bg-[#D97706] text-white px-1.5 py-0.5 shrink-0">SALLE</span>
                   <div className="text-xs">
                     <p className="font-bold text-[#201D1D] dark:text-[#FDFCFC]">{c.roomName}</p>
-                    <p className="text-[#9A9898]">
-                      {dayNames[c.dayOfWeek]} {c.time} — {c.classes.join(" vs ")}
-                    </p>
+                    <p className="text-[#9A9898]">{dayNames[c.dayOfWeek]} {c.time} — {c.classes.join(" vs ")}</p>
                   </div>
                 </div>
               ))}
@@ -358,7 +506,149 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         </div>
       </div>
 
-      {/* Teacher Workload */}
+      {/* ═══ ACTIVITY FEED & HOLIDAYS ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Activity Feed */}
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Activité récente</p>
+            <button
+              onClick={() => setCurrentSection("audit")}
+              className="text-[10px] text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] flex items-center gap-1"
+            >
+              Tout voir <ChevronRight className="h-2.5 w-2.5" />
+            </button>
+          </div>
+          {(!data.recentActivity || data.recentActivity.length === 0) ? (
+            <div className="py-8 text-center">
+              <Activity className="h-6 w-6 text-[#9A9898] mx-auto mb-2 opacity-30" />
+              <p className="text-xs text-[#9A9898]">Aucune activité enregistrée</p>
+            </div>
+          ) : (
+            <div className="space-y-0 max-h-64 overflow-y-auto scrollbar-thin">
+              {data.recentActivity.slice(0, 10).map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 py-2 border-b border-[#E5E5E5] dark:border-[#2A2A2A] last:border-0"
+                >
+                  <div className="shrink-0 w-6 flex items-center justify-center">
+                    {getActivityIcon(item.action, item.entity)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-[#201D1D] dark:text-[#FDFCFC] truncate">
+                      <span className="font-bold">{getActionLabel(item.action)}</span>{" "}
+                      {getEntityLabel(item.entity)}
+                      {item.details ? <span className="text-[#9A9898]"> — {item.details}</span> : ""}
+                    </p>
+                    <p className="text-[10px] text-[#9A9898]">
+                      {item.userName} · {new Date(item.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Upcoming Holidays */}
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Prochaines vacances</p>
+          {(!data.upcomingHolidays || data.upcomingHolidays.length === 0) ? (
+            <div className="py-8 text-center">
+              <Umbrella className="h-6 w-6 text-[#9A9898] mx-auto mb-2 opacity-30" />
+              <p className="text-xs text-[#9A9898]">Aucune vacances à venir</p>
+            </div>
+          ) : (
+            <div className="space-y-0">
+              {data.upcomingHolidays.map((holiday) => {
+                const start = new Date(holiday.startDate);
+                const end = new Date(holiday.endDate);
+                const daysUntil = Math.ceil((start.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                return (
+                  <div
+                    key={holiday.id}
+                    className="flex items-center gap-3 py-3 border-b border-[#E5E5E5] dark:border-[#2A2A2A] last:border-0"
+                  >
+                    <div className="h-8 w-8 flex items-center justify-center border border-[#E5E5E5] dark:border-[#2A2A2A] shrink-0">
+                      <Umbrella className="h-3.5 w-3.5 text-[#9A9898]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] truncate">{holiday.name}</p>
+                      <p className="text-[10px] text-[#9A9898]">
+                        {start.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} — {end.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+                        {daysUntil > 0 ? `J-${daysUntil}` : "En cours"}
+                      </p>
+                      <p className="text-[10px] text-[#9A9898]">
+                        {holiday.type === "vacances" ? "Vacances" : holiday.type === "jour_ferie" ? "Férié" : holiday.type}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ═══ PLAN USAGE ═══ */}
+      {data.planUsage && (
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Utilisation du plan</p>
+            <button
+              onClick={() => setCurrentSection("pricing")}
+              className="text-[10px] text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] flex items-center gap-1"
+            >
+              Voir les plans <ChevronRight className="h-2.5 w-2.5" />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {(["teachers", "rooms", "timetables", "institutions"] as const).map((type) => {
+              const usage = data.planUsage[type];
+              const labels: Record<string, string> = {
+                teachers: "Enseignants",
+                rooms: "Salles",
+                timetables: "Emplois du temps",
+                institutions: "Établissements",
+              };
+              const isUnlimited = usage.limit === -1;
+              const percentage = isUnlimited ? 0 : usage.limit > 0 ? Math.round((usage.current / usage.limit) * 100) : 0;
+              const isNearLimit = !isUnlimited && percentage >= 80;
+              const isOverLimit = !isUnlimited && percentage >= 100;
+              return (
+                <div key={type} className="border border-[#F8F7F7] dark:border-[#1A1A1A] p-3">
+                  <p className="text-xs text-[#9A9898] mb-1">{labels[type]}</p>
+                  <div className="flex items-baseline gap-1">
+                    <span className={`text-lg font-bold ${isOverLimit ? "text-[#DC2626]" : isNearLimit ? "text-[#D97706]" : "text-[#201D1D] dark:text-[#FDFCFC]"}`}>
+                      {usage.current}
+                    </span>
+                    <span className="text-xs text-[#9A9898]">/ {isUnlimited ? "∞" : usage.limit}</span>
+                  </div>
+                  {!isUnlimited && (
+                    <div className="mt-2 h-1 bg-[#F8F7F7] dark:bg-[#1A1A1A] w-full">
+                      <div
+                        className={`h-full transition-all duration-500 ${
+                          isOverLimit ? "bg-[#DC2626]" : isNearLimit ? "bg-[#D97706]" : "bg-[#201D1D] dark:bg-[#FDFCFC]"
+                        }`}
+                        style={{ width: `${Math.min(percentage, 100)}%` }}
+                      />
+                    </div>
+                  )}
+                  {isUnlimited && (
+                    <p className="text-[10px] text-[#9A9898] mt-1">Illimité</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ TEACHER WORKLOAD ═══ */}
       <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
         <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Charge des enseignants</p>
         {data.teacherWorkload.length === 0 ? (
@@ -385,7 +675,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         )}
       </div>
 
-      {/* Recent Timetables */}
+      {/* ═══ RECENT TIMETABLES ═══ */}
       <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
         <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Emplois du temps récents</p>
         {data.recentTimetables.length === 0 ? (
@@ -410,16 +700,18 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         )}
       </div>
 
-      {/* Analytics Charts */}
+      {/* ═══ ANALYTICS CHARTS ═══ */}
       <DashboardCharts
         roomUtilization={data.roomUtilization}
         teacherWorkload={data.teacherWorkload}
         subjectData={subjectData}
         completionRate={data.completionRate}
         roomSlotsByDay={data.roomSlotsByDay}
+        subjectTypeBreakdown={data.subjectTypeBreakdown}
+        weeklyHoursDistribution={data.weeklyHoursDistribution}
       />
 
-      {/* ═══ NEW: Weekly Statistics Cards ═══ */}
+      {/* ═══ WEEKLY STATISTICS ═══ */}
       <div>
         <p className="text-xs font-bold text-[#9A9898] mb-2">Statistiques hebdomadaires</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -446,7 +738,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         </div>
       </div>
 
-      {/* ═══ NEW: Upcoming Schedule ═══ */}
+      {/* ═══ UPCOMING SCHEDULE ═══ */}
       <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
         <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Prochains cours</p>
         {(data.upcomingSlots ?? []).length === 0 ? (
@@ -500,7 +792,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         )}
       </div>
 
-      {/* ═══ NEW: Teacher Workload Distribution Chart ═══ */}
+      {/* ═══ TEACHER WORKLOAD DISTRIBUTION CHART ═══ */}
       <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
         <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Répartition de la charge enseignante</p>
         {data.teacherWorkload.length === 0 ? (
@@ -541,7 +833,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         )}
       </div>
 
-      {/* ═══ NEW: Room Utilization Heatmap ═══ */}
+      {/* ═══ ROOM UTILIZATION HEATMAP ═══ */}
       <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
         <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Utilisation des salles</p>
         {data.roomUtilization.length === 0 ? (
@@ -549,7 +841,6 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         ) : (
           <div className="overflow-x-auto">
             <div className="min-w-[500px]">
-              {/* Header: days */}
               <div className="grid gap-1 mb-1" style={{ gridTemplateColumns: `120px repeat(${Math.min(6, data.roomUtilization.length)}, 1fr)` }}>
                 <div className="text-[10px] text-[#9A9898] font-bold flex items-center">Salle</div>
                 {[1, 2, 3, 4, 5, 6].map((day) => (
@@ -558,7 +849,6 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
                   </div>
                 ))}
               </div>
-              {/* Rows: rooms x days */}
               {data.roomUtilization.slice(0, 10).map((room) => {
                 const roomDays = (data.roomSlotsByDay || []).filter((d) => d.roomId === room.id || d.roomName === room.name);
                 return (
@@ -567,7 +857,6 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
                     {[1, 2, 3, 4, 5, 6].map((day) => {
                       const dayData = roomDays.find((d) => d.dayOfWeek === day);
                       const count = dayData?.count || 0;
-                      // Heatmap colors: 0=empty, 1-2=light, 3-4=medium, 5+=full
                       let bgColor = "bg-[#F8F7F7] dark:bg-[#1A1A1A]";
                       let textColor = "text-[#9A9898]";
                       if (count === 0) {
@@ -592,7 +881,6 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
                   </div>
                 );
               })}
-              {/* Legend */}
               <div className="flex items-center gap-4 mt-3">
                 <div className="flex items-center gap-1">
                   <div className="h-3 w-3 bg-[#F8F7F7] dark:bg-[#1A1A1A] border border-[#E5E5E5] dark:border-[#2A2A2A]" />

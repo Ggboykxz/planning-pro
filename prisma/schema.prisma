@@ -48,6 +48,7 @@ model Institution {
   primaryUsers User[]  @relation("PrimaryInstitution")
   absences  Absence[]
   holidays  Holiday[]
+  studentInstitutions StudentInstitution[]
 }
 
 model Teacher {
@@ -235,7 +236,7 @@ model User {
   email         String   @unique
   name          String
   passwordHash  String
-  role          String   @default("admin")  // "admin", "teacher", "viewer"
+  role          String   @default("admin")  // "admin", "teacher", "student", "viewer"
   avatar        String?
   institutionId String?  // Primary institution
   plan          String   @default("free")   // "free", "pro", "enterprise"
@@ -249,6 +250,7 @@ model User {
   institution Institution? @relation("PrimaryInstitution", fields: [institutionId], references: [id], onDelete: SetNull)
   auditLogs  AuditLog[]
   institutions UserInstitution[]
+  studentInstitutions StudentInstitution[]
 }
 
 model UserInstitution {
@@ -297,6 +299,22 @@ model Holiday {
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model StudentInstitution {
+  id            String   @id @default(cuid())
+  userId        String
+  institutionId String
+  classId       String?  // Student can be linked to a specific class
+  studentNumber String?  // Matricule/Student ID number
+  
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([userId, institutionId])
 }
 
 model AuditLog {

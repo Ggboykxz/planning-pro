@@ -65,3 +65,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
+
+// POST /api/audit - Create audit log entry (used for contact sales, etc.)
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { userId, institutionId, action, entity, details } = body;
+
+    if (!action || !entity) {
+      return NextResponse.json({ error: "action et entity requis" }, { status: 400 });
+    }
+
+    const log = await dataStore.auditLog.create({
+      data: {
+        userId: userId || undefined,
+        institutionId: institutionId || undefined,
+        action,
+        entity,
+        entityId: "contact_request",
+        details: details || undefined,
+      },
+    });
+
+    return NextResponse.json({ success: true, id: log.id }, { status: 201 });
+  } catch (error) {
+    console.error("Create audit log error:", error);
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  }
+}
