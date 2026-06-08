@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/billing - Update plan (mock)
+// POST /api/billing - Update plan
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -99,10 +99,12 @@ export async function POST(req: NextRequest) {
     } });
 
     // Log audit
+    // Update localStorage on client side is handled by the client
+    // The plan change is effective immediately server-side
     await dataStore.auditLog.create({
       data: {
         action: "PLAN_UPDATE",
-        entity: "User",
+        entity: "user",
         entityId: userId,
         details: `Plan changé à ${plan}`,
       },

@@ -9,7 +9,7 @@ import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import {
   Terminal, Sparkles, AlertTriangle, Building2, Share2, UserX, BarChart3,
   ArrowRight, Check, Menu, X, Sun, Moon, ChevronRight, Zap, Shield, Clock,
-  Rocket, Globe, Users,
+  Rocket, Globe, Users, Play, Cpu, Layers,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,7 @@ interface InstitutionData {
 // ─── Terminal Preview Component ──────────────────────────────
 function TerminalPreview() {
   const [currentLine, setCurrentLine] = useState(0);
+  const [isTyping, setIsTyping] = useState(false);
   const lines = [
     { prompt: "$", text: "planningpro generate --ai", delay: 0 },
     { prompt: "⟩", text: "Analyse des contraintes...", delay: 800 },
@@ -41,7 +42,7 @@ function TerminalPreview() {
   }, [lines.length]);
 
   return (
-    <div className="bg-[#201D1D] dark:bg-[#111111] border border-[#2A2A2A] p-4 sm:p-6 text-xs sm:text-sm font-mono max-w-lg mx-auto">
+    <div className="bg-[#201D1D] dark:bg-[#111111] border border-[#2A2A2A] p-4 sm:p-6 text-xs sm:text-sm font-mono max-w-lg mx-auto shadow-2xl">
       <div className="flex items-center gap-2 mb-4 pb-3 border-b border-[#2A2A2A]">
         <div className="flex gap-1.5">
           <div className="w-2.5 h-2.5 bg-[#DC2626]" />
@@ -52,7 +53,7 @@ function TerminalPreview() {
       </div>
       <div className="space-y-1.5">
         {lines.slice(0, currentLine + 1).map((line, i) => (
-          <div key={i} className="flex items-start gap-2">
+          <div key={i} className="flex items-start gap-2 animate-in fade-in duration-300">
             <span className={cn("shrink-0 font-bold", line.prompt === "✓" ? "text-[#16A34A]" : line.prompt === "$" ? "text-[#FDFCFC]" : "text-[#9A9898]")}>
               {line.prompt}
             </span>
@@ -64,6 +65,23 @@ function TerminalPreview() {
       </div>
     </div>
   );
+}
+
+// ─── Stat counter animation ──────────────────────────────
+function AnimatedNumber({ target, suffix = "" }: { target: number; suffix?: string }) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let start = 0;
+    const duration = 2000;
+    const stepTime = duration / target;
+    const timer = setInterval(() => {
+      start += 1;
+      setCount(start);
+      if (start >= target) clearInterval(timer);
+    }, stepTime);
+    return () => clearInterval(timer);
+  }, [target]);
+  return <span>{count}{suffix}</span>;
 }
 
 // ─── Landing Page Component ──────────────────────────────────
@@ -85,23 +103,25 @@ function LandingPage() {
               <span className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC]">PlanningPro_</span>
             </Link>
             <div className="hidden md:flex items-center gap-6">
-              <a href="#features" className="text-xs text-[#646262] dark:text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]">Fonctionnalités</a>
-              <a href="#pricing" className="text-xs text-[#646262] dark:text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]">Tarifs</a>
+              <a href="#features" className="text-xs text-[#646262] dark:text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] transition-colors">Fonctionnalités</a>
+              <a href="#how-it-works" className="text-xs text-[#646262] dark:text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] transition-colors">Comment ça marche</a>
+              <a href="#pricing" className="text-xs text-[#646262] dark:text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] transition-colors">Tarifs</a>
             </div>
             <div className="hidden md:flex items-center gap-3">
-              <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="p-2 text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]" aria-label="Changer le thème">
+              <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="p-2 text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] transition-colors" aria-label="Changer le thème">
                 {mounted && theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </button>
-              <Link href="/login" className="text-xs text-[#201D1D] dark:text-[#FDFCFC] hover:opacity-70">Se connecter</Link>
-              <Link href="/register" className="text-xs font-bold bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-4 py-2 hover:opacity-80">Essai gratuit</Link>
+              <Link href="/login" className="text-xs text-[#201D1D] dark:text-[#FDFCFC] hover:opacity-70 transition-opacity">Se connecter</Link>
+              <Link href="/register" className="text-xs font-bold bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-4 py-2 hover:opacity-80 transition-opacity">Essai gratuit</Link>
             </div>
             <button className="md:hidden p-2 text-[#201D1D] dark:text-[#FDFCFC]" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label="Menu">
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
           </div>
           {mobileMenuOpen && (
-            <div className="md:hidden border-t border-[#E5E5E5] dark:border-[#2A2A2A] py-4 space-y-3">
+            <div className="md:hidden border-t border-[#E5E5E5] dark:border-[#2A2A2A] py-4 space-y-3 animate-in slide-in-from-top-1 duration-200">
               <a href="#features" className="block text-xs text-[#646262] dark:text-[#9A9898] py-2" onClick={() => setMobileMenuOpen(false)}>Fonctionnalités</a>
+              <a href="#how-it-works" className="block text-xs text-[#646262] dark:text-[#9A9898] py-2" onClick={() => setMobileMenuOpen(false)}>Comment ça marche</a>
               <a href="#pricing" className="block text-xs text-[#646262] dark:text-[#9A9898] py-2" onClick={() => setMobileMenuOpen(false)}>Tarifs</a>
               <div className="flex gap-3 pt-2">
                 <Link href="/login" className="text-xs text-[#201D1D] dark:text-[#FDFCFC] py-2">Se connecter</Link>
@@ -114,24 +134,27 @@ function LandingPage() {
 
       {/* Hero */}
       <section className="relative overflow-hidden">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24 lg:py-32">
+        {/* Subtle grid background */}
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0U1RTVFNSIgc3Ryb2tlLXdpZHRoPSIwLjUiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-30 dark:opacity-10" />
+
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24 lg:py-32 relative">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
-              <div className="inline-flex items-center gap-2 border border-[#E5E5E5] dark:border-[#2A2A2A] px-3 py-1.5 mb-6">
+              <div className="inline-flex items-center gap-2 border border-[#D97706]/30 bg-[#D97706]/5 px-3 py-1.5 mb-6">
                 <Rocket className="h-3 w-3 text-[#D97706]" />
-                <span className="text-[10px] font-bold text-[#9A9898]">NOUVEAU — LANCEMENT 2025</span>
+                <span className="text-[10px] font-bold text-[#D97706]">NOUVEAU — LANCEMENT 2025</span>
               </div>
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#201D1D] dark:text-[#FDFCFC] leading-tight mb-4">
-                L&apos;emploi du temps, <span className="underline decoration-4 underline-offset-4">réinventé</span>.
+                L&apos;emploi du temps, <span className="underline decoration-4 decoration-[#D97706] underline-offset-4">réinventé</span>.
               </h1>
               <p className="text-sm sm:text-base text-[#646262] dark:text-[#9A9898] leading-relaxed mb-8 max-w-md">
                 Générez, optimisez et partagez vos emplois du temps en quelques secondes. L&apos;intelligence artificielle détecte les conflits et propose les meilleures organisations.
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
-                <Link href="/register" className="inline-flex items-center justify-center gap-2 text-sm font-bold bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-6 py-3 hover:opacity-80">
+                <Link href="/register" className="inline-flex items-center justify-center gap-2 text-sm font-bold bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-6 py-3 hover:opacity-80 transition-opacity">
                   Commencer gratuitement <ArrowRight className="h-4 w-4" />
                 </Link>
-                <a href="#features" className="inline-flex items-center justify-center gap-2 text-sm border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#201D1D] dark:text-[#FDFCFC] px-6 py-3 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]">
+                <a href="#features" className="inline-flex items-center justify-center gap-2 text-sm border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#201D1D] dark:text-[#FDFCFC] px-6 py-3 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors">
                   Voir la démo <ChevronRight className="h-4 w-4" />
                 </a>
               </div>
@@ -141,49 +164,85 @@ function LandingPage() {
         </div>
       </section>
 
-      {/* Early Adopters Banner */}
+      {/* Trust Indicators */}
       <section className="border-y border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#F8F7F7] dark:bg-[#111111]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-          <div className="flex flex-col items-center text-center gap-3">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+          <div className="flex flex-col items-center text-center gap-4">
             <div className="flex items-center gap-2">
               <Globe className="h-4 w-4 text-[#D97706]" />
               <span className="text-[10px] font-bold text-[#9A9898] uppercase tracking-widest">Disponible en Afrique et en Europe</span>
             </div>
-            <p className="text-xs text-[#646262] dark:text-[#9A9898] max-w-lg">
-              PlanningPro accompagne les établissements francophones dans leur planification. Rejoignez les premiers utilisateurs et contribuez à façonner l&apos;outil.
+            <p className="text-xs text-[#646262] dark:text-[#9A9898] max-w-lg leading-relaxed">
+              PlanningPro accompagne les établissements francophones dans leur planification. Conçu pour les réalités des universités, lycées et collèges d&apos;Afrique et d&apos;Europe.
             </p>
-            <div className="flex items-center gap-4 mt-1">
-              <div className="flex items-center gap-1.5"><Users className="h-3 w-3 text-[#9A9898]" /><span className="text-[10px] text-[#9A9898]">En phase de lancement</span></div>
-              <div className="flex items-center gap-1.5"><Shield className="h-3 w-3 text-[#16A34A]" /><span className="text-[10px] text-[#9A9898]">Gratuit pendant le lancement</span></div>
+            <div className="flex items-center gap-6 mt-2">
+              <div className="flex items-center gap-1.5">
+                <Shield className="h-3 w-3 text-[#16A34A]" />
+                <span className="text-[10px] text-[#9A9898]">Données sécurisées</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Zap className="h-3 w-3 text-[#D97706]" />
+                <span className="text-[10px] text-[#9A9898]">Génération en secondes</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Users className="h-3 w-3 text-[#9A9898]" />
+                <span className="text-[10px] text-[#9A9898]">Gratuit pendant le lancement</span>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Features */}
-      <section id="features" className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
+      {/* How it works */}
+      <section id="how-it-works" className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
         <div className="text-center mb-12">
-          <span className="text-[10px] font-bold text-[#9A9898] uppercase tracking-widest">Fonctionnalités</span>
-          <h2 className="text-2xl sm:text-3xl font-bold text-[#201D1D] dark:text-[#FDFCFC] mt-2">Tout ce dont vous avez besoin</h2>
-          <p className="text-xs text-[#9A9898] mt-2 max-w-md mx-auto">Un outil complet pour gérer les emplois du temps de vos établissements, de la planification à l&apos;analyse.</p>
+          <span className="text-[10px] font-bold text-[#D97706] uppercase tracking-widest">Comment ça marche</span>
+          <h2 className="text-2xl sm:text-3xl font-bold text-[#201D1D] dark:text-[#FDFCFC] mt-2">3 étapes pour votre emploi du temps</h2>
         </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid sm:grid-cols-3 gap-6">
           {[
-            { icon: Sparkles, title: "Génération IA", desc: "Générez automatiquement des emplois du temps optimisés grâce à notre moteur d'intelligence artificielle avancé." },
-            { icon: AlertTriangle, title: "Détection de conflits", desc: "Identification en temps réel des conflits de salles, d'enseignants et de créneaux horaires." },
-            { icon: Building2, title: "Multi-établissements", desc: "Gérez plusieurs établissements depuis une seule interface, avec des données centralisées." },
-            { icon: Share2, title: "Partage & Export", desc: "Partagez via lien sécurisé ou exportez en PDF, image et iCal pour une diffusion simple." },
-            { icon: UserX, title: "Gestion des absences", desc: "Signalez et gérez les absences des enseignants avec attribution automatique de remplaçants." },
-            { icon: BarChart3, title: "Analytics avancées", desc: "Tableaux de bord et statistiques détaillées pour optimiser l'utilisation des ressources." },
-          ].map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors group">
-              <div className="h-10 w-10 flex items-center justify-center border border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#F8F7F7] dark:bg-[#1A1A1A] mb-4 group-hover:border-[#201D1D] dark:group-hover:border-[#FDFCFC] transition-colors">
-                <Icon className="h-5 w-5 text-[#201D1D] dark:text-[#FDFCFC]" />
+            { step: "01", icon: Building2, title: "Configurez votre établissement", desc: "Renseignez vos enseignants, salles, matières et classes. Choisissez un modèle horaire adapté à votre système éducatif." },
+            { step: "02", icon: Cpu, title: "Générez avec l'IA", desc: "Notre algorithme d'optimisation crée automatiquement un emploi du temps sans conflit, en respectant toutes vos contraintes." },
+            { step: "03", icon: Share2, title: "Partagez et consultez", desc: "Partagez via lien sécurisé, exportez en PDF ou iCal. Les étudiants consultent leur emploi du temps en temps réel." },
+          ].map(({ step, icon: Icon, title, desc }) => (
+            <div key={step} className="relative border border-[#E5E5E5] dark:border-[#2A2A2A] p-6 hover:border-[#D97706]/50 transition-colors group">
+              <span className="text-4xl font-bold text-[#F8F7F7] dark:text-[#1A1A1A] absolute top-3 right-4 group-hover:text-[#D97706]/10 transition-colors">{step}</span>
+              <div className="h-10 w-10 flex items-center justify-center border border-[#D97706]/30 bg-[#D97706]/5 mb-4">
+                <Icon className="h-5 w-5 text-[#D97706]" />
               </div>
               <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-2">{title}</h3>
               <p className="text-xs text-[#9A9898] leading-relaxed">{desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Features */}
+      <section id="features" className="bg-[#F8F7F7] dark:bg-[#111111] border-y border-[#E5E5E5] dark:border-[#2A2A2A]">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
+          <div className="text-center mb-12">
+            <span className="text-[10px] font-bold text-[#9A9898] uppercase tracking-widest">Fonctionnalités</span>
+            <h2 className="text-2xl sm:text-3xl font-bold text-[#201D1D] dark:text-[#FDFCFC] mt-2">Tout ce dont vous avez besoin</h2>
+            <p className="text-xs text-[#9A9898] mt-2 max-w-md mx-auto">Un outil complet pour gérer les emplois du temps de vos établissements, de la planification à l&apos;analyse.</p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              { icon: Sparkles, title: "Génération IA", desc: "Générez automatiquement des emplois du temps optimisés grâce à notre moteur d'intelligence artificielle avancé." },
+              { icon: AlertTriangle, title: "Détection de conflits", desc: "Identification en temps réel des conflits de salles, d'enseignants et de créneaux horaires." },
+              { icon: Building2, title: "Multi-établissements", desc: "Gérez plusieurs établissements depuis une seule interface, avec des données centralisées." },
+              { icon: Share2, title: "Partage & Export", desc: "Partagez via lien sécurisé ou exportez en PDF, image et iCal pour une diffusion simple." },
+              { icon: UserX, title: "Gestion des absences", desc: "Signalez et gérez les absences des enseignants avec attribution automatique de remplaçants." },
+              { icon: BarChart3, title: "Analytics avancées", desc: "Tableaux de bord et statistiques détaillées pour optimiser l'utilisation des ressources." },
+            ].map(({ icon: Icon, title, desc }) => (
+              <div key={title} className="border border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#FDFCFC] dark:bg-[#0A0A0A] p-6 hover:border-[#D97706]/30 transition-all group">
+                <div className="h-10 w-10 flex items-center justify-center border border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#F8F7F7] dark:bg-[#1A1A1A] mb-4 group-hover:border-[#D97706]/30 group-hover:bg-[#D97706]/5 transition-all">
+                  <Icon className="h-5 w-5 text-[#201D1D] dark:text-[#FDFCFC] group-hover:text-[#D97706] transition-colors" />
+                </div>
+                <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-2">{title}</h3>
+                <p className="text-xs text-[#9A9898] leading-relaxed">{desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -200,7 +259,10 @@ function LandingPage() {
             { name: "Pro", price: "29€", features: ["Établissements illimités", "Enseignants illimités", "Génération IA", "Détection de conflits", "Export PDF & iCal", "Analytics avancées"], cta: "Essai gratuit 14 jours", highlighted: true },
             { name: "Enterprise", price: "99€", features: ["Tout le plan Pro", "API dédiée", "SSO & intégrations", "Account manager dédié", "Formation personnalisée"], cta: "Contacter l'équipe" },
           ].map((plan) => (
-            <div key={plan.name} className={cn("border p-6 flex flex-col", plan.highlighted ? "border-[#201D1D] dark:border-[#FDFCFC] bg-[#201D1D] dark:bg-[#FDFCFC]" : "border-[#E5E5E5] dark:border-[#2A2A2A]")}>
+            <div key={plan.name} className={cn("border p-6 flex flex-col", plan.highlighted ? "border-[#D97706] bg-[#201D1D] dark:bg-[#FDFCFC] relative" : "border-[#E5E5E5] dark:border-[#2A2A2A]")}>
+              {plan.highlighted && (
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-bold bg-[#D97706] text-white px-3 py-1">POPULAIRE</span>
+              )}
               <h3 className={cn("text-sm font-bold mb-1", plan.highlighted ? "text-[#FDFCFC] dark:text-[#0A0A0A]" : "text-[#201D1D] dark:text-[#FDFCFC]")}>{plan.name}</h3>
               <div className="mb-6 mt-2">
                 <span className={cn("text-3xl font-bold", plan.highlighted ? "text-[#FDFCFC] dark:text-[#0A0A0A]" : "text-[#201D1D] dark:text-[#FDFCFC]")}>{plan.price}</span>
@@ -209,12 +271,12 @@ function LandingPage() {
               <ul className="space-y-2 mb-6 flex-1">
                 {plan.features.map((f) => (
                   <li key={f} className="flex items-start gap-2 text-xs">
-                    <Check className={cn("h-3 w-3 mt-0.5 shrink-0", plan.highlighted ? "text-[#FDFCFC] dark:text-[#0A0A0A]" : "text-[#16A34A]")} />
+                    <Check className={cn("h-3 w-3 mt-0.5 shrink-0", plan.highlighted ? "text-[#D97706]" : "text-[#16A34A]")} />
                     <span className={cn(plan.highlighted ? "text-[#FDFCFC]/80 dark:text-[#0A0A0A]/80" : "text-[#646262] dark:text-[#9A9898]")}>{f}</span>
                   </li>
                 ))}
               </ul>
-              <Link href="/register" className={cn("block text-center text-xs font-bold py-3 border transition-colors", plan.highlighted ? "border-[#FDFCFC] dark:border-[#0A0A0A] text-[#FDFCFC] dark:text-[#0A0A0A] hover:bg-[#FDFCFC]/10 dark:hover:bg-[#0A0A0A]/10" : "border-[#E5E5E5] dark:border-[#2A2A2A] text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]")}>
+              <Link href="/register" className={cn("block text-center text-xs font-bold py-3 border transition-colors", plan.highlighted ? "border-[#D97706] text-[#D97706] hover:bg-[#D97706] hover:text-white" : "border-[#E5E5E5] dark:border-[#2A2A2A] text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]")}>
                 {plan.cta}
               </Link>
             </div>
@@ -224,16 +286,19 @@ function LandingPage() {
 
       {/* CTA */}
       <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
-        <div className="border border-[#201D1D] dark:border-[#FDFCFC] bg-[#201D1D] dark:bg-[#FDFCFC] p-8 sm:p-12 text-center">
-          <h2 className="text-2xl sm:text-3xl font-bold text-[#FDFCFC] dark:text-[#0A0A0A] mb-3">Prêt à réinventer vos emplois du temps ?</h2>
-          <p className="text-xs sm:text-sm text-[#FDFCFC]/70 dark:text-[#0A0A0A]/70 mb-6 max-w-md mx-auto">
-            Rejoignez les premiers établissements qui font confiance à PlanningPro pour une planification intelligente et sans stress.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link href="/register" className="inline-flex items-center justify-center gap-2 text-sm font-bold border border-[#FDFCFC] dark:border-[#0A0A0A] text-[#FDFCFC] dark:text-[#0A0A0A] px-6 py-3 hover:bg-[#FDFCFC]/10 dark:hover:bg-[#0A0A0A]/10">
-              Essai gratuit 14 jours <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link href="/login" className="inline-flex items-center justify-center gap-2 text-sm text-[#FDFCFC]/70 dark:text-[#0A0A0A]/70 hover:text-[#FDFCFC] dark:hover:text-[#0A0A0A] px-6 py-3">Se connecter</Link>
+        <div className="border border-[#201D1D] dark:border-[#FDFCFC] bg-[#201D1D] dark:bg-[#FDFCFC] p-8 sm:p-12 text-center relative overflow-hidden">
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjA1KSIgc3Ryb2tlLXdpZHRoPSIwLjUiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-50" />
+          <div className="relative">
+            <h2 className="text-2xl sm:text-3xl font-bold text-[#FDFCFC] dark:text-[#0A0A0A] mb-3">Prêt à réinventer vos emplois du temps ?</h2>
+            <p className="text-xs sm:text-sm text-[#FDFCFC]/70 dark:text-[#0A0A0A]/70 mb-6 max-w-md mx-auto">
+              Rejoignez les premiers établissements qui font confiance à PlanningPro pour une planification intelligente et sans stress.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Link href="/register" className="inline-flex items-center justify-center gap-2 text-sm font-bold border border-[#D97706] text-[#D97706] px-6 py-3 hover:bg-[#D97706] hover:text-[#201D1D] transition-colors">
+                Essai gratuit 14 jours <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link href="/login" className="inline-flex items-center justify-center gap-2 text-sm text-[#FDFCFC]/70 dark:text-[#0A0A0A]/70 hover:text-[#FDFCFC] dark:hover:text-[#0A0A0A] px-6 py-3 transition-colors">Se connecter</Link>
+            </div>
           </div>
         </div>
       </section>
@@ -397,7 +462,7 @@ export default function HomePage() {
     return (
       <div>
         {errorMessage && (
-          <div className="fixed top-0 left-0 right-0 z-50 bg-[#DC2626] text-[#FDFCFC] px-4 py-3 text-xs font-bold flex items-center justify-between">
+          <div className="fixed top-0 left-0 right-0 z-50 bg-[#DC2626] text-[#FDFCFC] px-4 py-3 text-xs font-bold flex items-center justify-between animate-in slide-in-from-top-1 duration-200">
             <span>{errorMessage}</span>
             <button onClick={() => setErrorMessage(null)} className="ml-4 px-2 py-1 border border-[#FDFCFC] hover:bg-[#FDFCFC] hover:text-[#DC2626] transition-colors">Fermer</button>
           </div>

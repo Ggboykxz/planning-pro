@@ -5,6 +5,10 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  // Ensure proper static generation for Vercel
+  poweredByHeader: false,
+  // Fix chunk loading issues on Vercel
+  generateEtags: false,
   allowedDevOrigins: [
     ".space.chatglm.site",
     "space.chatglm.site",
