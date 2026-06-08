@@ -44,8 +44,8 @@ const mainNavItems: { id: AppSection; label: string; path: string; icon: React.E
   { id: "settings", label: "Paramètres", path: "/settings", icon: Settings },
 ];
 
-const secondaryNavItems: { id: AppSection; label: string; path: string; icon: React.ElementType }[] = [
-  { id: "student", label: "Portail étudiant", path: "/student", icon: GraduationCap },
+const secondaryNavItems: { id: AppSection; label: string; path: string; icon: React.ElementType; studentOnly?: boolean }[] = [
+  { id: "student", label: "Portail étudiant", path: "/student", icon: GraduationCap, studentOnly: true },
   { id: "profile", label: "Profil", path: "/profile", icon: User },
   { id: "pricing", label: "Abonnement", path: "/pricing", icon: CreditCard },
   { id: "audit", label: "Journal", path: "/audit", icon: ScrollText },
@@ -258,7 +258,7 @@ export function Sidebar({ institutionName }: SidebarProps) {
 
         {/* Secondary Navigation */}
         <div className="flex flex-col gap-0.5 px-2">
-          {secondaryNavItems.map((item) => {
+          {secondaryNavItems.filter((item) => !item.studentOnly || currentUser?.role === "student").map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
             return (

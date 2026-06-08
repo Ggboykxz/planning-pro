@@ -26,7 +26,7 @@ export async function GET(request: Request) {
       if (institution) {
         results.push({
           ...institution,
-          userRole: ui.role,
+          userRole: ui.role ?? null,
         });
       }
     }

@@ -300,7 +300,7 @@ async function buildPlanUsage(
   let institutionCount = 1;
   try {
     if (userId) {
-      const userInstitutions = await dataStore.userInstitution?.findMany?.({ where: { userId } }) || [];
+      const userInstitutions = await dataStore.userInstitution.findMany({ where: { userId } });
       institutionCount = userInstitutions.length || 1;
     }
     // Fallback: count all institutions if userInstitution not available

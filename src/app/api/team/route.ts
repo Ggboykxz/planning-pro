@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     // Enrich with user data
     const enrichedMembers = [];
     for (const member of members) {
-      const user = await dataStore.user.findUnique({ id: member.userId });
+      const user = await dataStore.user.findUnique({ where: { id: member.userId } });
       if (user) {
         enrichedMembers.push({
           id: member.id,
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
           role: member.role,
           avatar: user.avatar,
           plan: user.plan,
-          joinedAt: member.joinedAt || user.createdAt || new Date().toISOString(),
+          joinedAt: member.createdAt || user.createdAt || new Date().toISOString(),
         });
       }
     }
@@ -53,17 +53,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if user exists
-    let user = await dataStore.user.findUnique({ email });
+    let user = await dataStore.user.findUnique({ where: { email } });
     
     if (!user) {
       // Create user with default password
       user = await dataStore.user.create({
-        email,
-        name: name || email.split("@")[0],
-        passwordHash: `invited_${Date.now()}`,
-        role: "viewer",
-        plan: "free",
-        isActive: true,
+        data: {
+          email,
+          name: name || email.split("@")[0],
+          passwordHash: `invited_${Date.now()}`,
+          role: "viewer",
+          plan: "free",
+          isActive: true,
+        },
       });
     }
 
@@ -80,18 +82,22 @@ export async function POST(req: NextRequest) {
 
     // Add to institution
     const userInstitution = await dataStore.userInstitution.create({
-      userId: user.id,
-      institutionId,
-      role,
+      data: {
+        userId: user.id,
+        institutionId,
+        role,
+      },
     });
 
     // Log audit
     await dataStore.auditLog.create({
-      action: "TEAM_INVITE",
-      entity: "UserInstitution",
-      entityId: userInstitution.id,
-      institutionId,
-      details: `Invité ${email} en tant que ${role}`,
+      data: {
+        action: "TEAM_INVITE",
+        entity: "UserInstitution",
+        entityId: userInstitution.id,
+        institutionId,
+        details: `Invité ${email} en tant que ${role}`,
+      },
     });
 
     return NextResponse.json({
@@ -130,15 +136,17 @@ export async function PUT(req: NextRequest) {
     }
 
     // Update role
-    await dataStore.userInstitution.update(record.id, { role });
+    await dataStore.userInstitution.update({ where: { id: record.id }, data: { role } });
 
     // Log audit
     await dataStore.auditLog.create({
-      action: "TEAM_ROLE_UPDATE",
-      entity: "UserInstitution",
-      entityId: record.id,
-      institutionId,
-      details: `Rôle changé à ${role}`,
+      data: {
+        action: "TEAM_ROLE_UPDATE",
+        entity: "UserInstitution",
+        entityId: record.id,
+        institutionId,
+        details: `Rôle changé à ${role}`,
+      },
     });
 
     return NextResponse.json({ success: true });
@@ -171,15 +179,17 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Remove from institution
-    await dataStore.userInstitution.delete(record.id);
+    await dataStore.userInstitution.delete({ where: { id: record.id } });
 
     // Log audit
     await dataStore.auditLog.create({
-      action: "TEAM_REMOVE",
-      entity: "UserInstitution",
-      entityId: record.id,
-      institutionId,
-      details: `Membre retiré`,
+      data: {
+        action: "TEAM_REMOVE",
+        entity: "UserInstitution",
+        entityId: record.id,
+        institutionId,
+        details: `Membre retiré`,
+      },
     });
 
     return NextResponse.json({ success: true });

@@ -494,6 +494,14 @@ function enrichTimetable(
   return result;
 }
 
+// ─── Date serialization helper ───────────────────────────────────
+// Prisma returns Date objects for DateTime fields, but our interfaces expect strings.
+// Use JSON.parse(JSON.stringify(...)) to convert Date → string.
+
+function serializeDates<T>(result: T): T {
+  return JSON.parse(JSON.stringify(result));
+}
+
 // ─── Data Store API (mimics Prisma interface) ────────────────────
 
 export const dataStore = {
@@ -503,7 +511,7 @@ export const dataStore = {
     findMany: async (): Promise<InstitutionRecord[]> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.institution.findMany();
+        return serializeDates(await db.institution.findMany());
       }
       return store.institutions;
     },
@@ -515,7 +523,7 @@ export const dataStore = {
     }): Promise<InstitutionRecord | null> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.institution.findUnique({ where });
+        return serializeDates(await db.institution.findUnique({ where }));
       }
       return store.institutions.find((i) => i.id === where.id) || null;
     },
@@ -529,9 +537,9 @@ export const dataStore = {
     }): Promise<InstitutionRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.institution.create({
+        return serializeDates(await db.institution.create({
           data: data as Parameters<typeof db.institution.create>[0]["data"],
-        });
+        }));
       }
       const now = new Date().toISOString();
       const record: InstitutionRecord = {
@@ -575,10 +583,10 @@ export const dataStore = {
     }): Promise<InstitutionRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.institution.update({
+        return serializeDates(await db.institution.update({
           where,
           data: data as Parameters<typeof db.institution.update>[0]["data"],
-        });
+        }));
       }
       const idx = store.institutions.findIndex((i) => i.id === where.id);
       if (idx === -1) throw new Error("Institution non trouvée");
@@ -598,7 +606,7 @@ export const dataStore = {
     }): Promise<InstitutionRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.institution.delete({ where });
+        return serializeDates(await db.institution.delete({ where }));
       }
       const idx = store.institutions.findIndex((i) => i.id === where.id);
       if (idx === -1) throw new Error("Institution non trouvée");
@@ -653,10 +661,10 @@ export const dataStore = {
     } = {}): Promise<TeacherRecord[]> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.teacher.findMany({
+        return serializeDates(await db.teacher.findMany({
           where: where as Parameters<typeof db.teacher.findMany>[0]["where"],
           include: include as Parameters<typeof db.teacher.findMany>[0]["include"],
-        });
+        }));
       }
       let results = store.teachers;
       if (where?.institutionId) {
@@ -682,10 +690,10 @@ export const dataStore = {
     }): Promise<TeacherRecord | null> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.teacher.findUnique({
+        return serializeDates(await db.teacher.findUnique({
           where,
           select: select as Parameters<typeof db.teacher.findUnique>[0]["select"],
-        });
+        }));
       }
       const teacher = store.teachers.find((t) => t.id === where.id) || null;
       if (!teacher) return null;
@@ -702,9 +710,9 @@ export const dataStore = {
     }): Promise<TeacherRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.teacher.create({
+        return serializeDates(await db.teacher.create({
           data: data as Parameters<typeof db.teacher.create>[0]["data"],
-        });
+        }));
       }
       const now = new Date().toISOString();
       const record: TeacherRecord = {
@@ -727,10 +735,10 @@ export const dataStore = {
     }): Promise<TeacherRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.teacher.update({
+        return serializeDates(await db.teacher.update({
           where,
           data: data as Parameters<typeof db.teacher.update>[0]["data"],
-        });
+        }));
       }
       const idx = store.teachers.findIndex((t) => t.id === where.id);
       if (idx === -1) throw new Error("Enseignant non trouvé");
@@ -750,7 +758,7 @@ export const dataStore = {
     }): Promise<TeacherRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.teacher.delete({ where });
+        return serializeDates(await db.teacher.delete({ where }));
       }
       const idx = store.teachers.findIndex((t) => t.id === where.id);
       if (idx === -1) throw new Error("Enseignant non trouvé");
@@ -774,9 +782,9 @@ export const dataStore = {
     } = {}): Promise<RoomRecord[]> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.room.findMany({
+        return serializeDates(await db.room.findMany({
           where: where as Parameters<typeof db.room.findMany>[0]["where"],
-        });
+        }));
       }
       if (where?.institutionId) {
         return store.rooms.filter((r) => r.institutionId === where.institutionId);
@@ -793,10 +801,10 @@ export const dataStore = {
     }): Promise<RoomRecord | null> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.room.findUnique({
+        return serializeDates(await db.room.findUnique({
           where,
           select: select as Parameters<typeof db.room.findUnique>[0]["select"],
-        });
+        }));
       }
       const room = store.rooms.find((r) => r.id === where.id) || null;
       if (!room) return null;
@@ -813,9 +821,9 @@ export const dataStore = {
     }): Promise<RoomRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.room.create({
+        return serializeDates(await db.room.create({
           data: data as Parameters<typeof db.room.create>[0]["data"],
-        });
+        }));
       }
       const now = new Date().toISOString();
       const record: RoomRecord = { id: createId(), ...data, createdAt: now, updatedAt: now };
@@ -833,10 +841,10 @@ export const dataStore = {
     }): Promise<RoomRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.room.update({
+        return serializeDates(await db.room.update({
           where,
           data: data as Parameters<typeof db.room.update>[0]["data"],
-        });
+        }));
       }
       const idx = store.rooms.findIndex((r) => r.id === where.id);
       if (idx === -1) throw new Error("Salle non trouvée");
@@ -856,7 +864,7 @@ export const dataStore = {
     }): Promise<RoomRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.room.delete({ where });
+        return serializeDates(await db.room.delete({ where }));
       }
       const idx = store.rooms.findIndex((r) => r.id === where.id);
       if (idx === -1) throw new Error("Salle non trouvée");
@@ -876,9 +884,9 @@ export const dataStore = {
     } = {}): Promise<SubjectRecord[]> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.subject.findMany({
+        return serializeDates(await db.subject.findMany({
           where: where as Parameters<typeof db.subject.findMany>[0]["where"],
-        });
+        }));
       }
       if (where?.institutionId) {
         return store.subjects.filter((s) => s.institutionId === where.institutionId);
@@ -893,9 +901,9 @@ export const dataStore = {
     }): Promise<SubjectRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.subject.create({
+        return serializeDates(await db.subject.create({
           data: data as Parameters<typeof db.subject.create>[0]["data"],
-        });
+        }));
       }
       const now = new Date().toISOString();
       const record: SubjectRecord = {
@@ -918,10 +926,10 @@ export const dataStore = {
     }): Promise<SubjectRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.subject.update({
+        return serializeDates(await db.subject.update({
           where,
           data: data as Parameters<typeof db.subject.update>[0]["data"],
-        });
+        }));
       }
       const idx = store.subjects.findIndex((s) => s.id === where.id);
       if (idx === -1) throw new Error("Matière non trouvée");
@@ -941,7 +949,7 @@ export const dataStore = {
     }): Promise<SubjectRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.subject.delete({ where });
+        return serializeDates(await db.subject.delete({ where }));
       }
       const idx = store.subjects.findIndex((s) => s.id === where.id);
       if (idx === -1) throw new Error("Matière non trouvée");
@@ -968,9 +976,9 @@ export const dataStore = {
     } = {}): Promise<ClassRecord[]> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.class.findMany({
+        return serializeDates(await db.class.findMany({
           where: where as Parameters<typeof db.class.findMany>[0]["where"],
-        });
+        }));
       }
       if (where?.institutionId) {
         return store.classes.filter((c) => c.institutionId === where.institutionId);
@@ -987,10 +995,10 @@ export const dataStore = {
     }): Promise<ClassRecord | null> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.class.findUnique({
+        return serializeDates(await db.class.findUnique({
           where,
           include: include as Parameters<typeof db.class.findUnique>[0]["include"],
-        });
+        }));
       }
       const cls = store.classes.find((c) => c.id === where.id) || null;
       if (!cls) return null;
@@ -1017,9 +1025,9 @@ export const dataStore = {
     }): Promise<ClassRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.class.create({
+        return serializeDates(await db.class.create({
           data: data as Parameters<typeof db.class.create>[0]["data"],
-        });
+        }));
       }
       const now = new Date().toISOString();
       const record: ClassRecord = {
@@ -1042,10 +1050,10 @@ export const dataStore = {
     }): Promise<ClassRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.class.update({
+        return serializeDates(await db.class.update({
           where,
           data: data as Parameters<typeof db.class.update>[0]["data"],
-        });
+        }));
       }
       const idx = store.classes.findIndex((c) => c.id === where.id);
       if (idx === -1) throw new Error("Classe non trouvée");
@@ -1065,7 +1073,7 @@ export const dataStore = {
     }): Promise<ClassRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.class.delete({ where });
+        return serializeDates(await db.class.delete({ where }));
       }
       const idx = store.classes.findIndex((c) => c.id === where.id);
       if (idx === -1) throw new Error("Classe non trouvée");
@@ -1103,10 +1111,10 @@ export const dataStore = {
     } = {}): Promise<TimeSlotRecord[]> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timeSlot.findMany({
+        return serializeDates(await db.timeSlot.findMany({
           where: where as Parameters<typeof db.timeSlot.findMany>[0]["where"],
           orderBy: orderBy as Parameters<typeof db.timeSlot.findMany>[0]["orderBy"],
-        });
+        }));
       }
       let results = store.timeSlots;
       if (where?.institutionId) {
@@ -1126,9 +1134,9 @@ export const dataStore = {
     }): Promise<TimeSlotRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timeSlot.create({
+        return serializeDates(await db.timeSlot.create({
           data: data as Parameters<typeof db.timeSlot.create>[0]["data"],
-        });
+        }));
       }
       const now = new Date().toISOString();
       const record: TimeSlotRecord = {
@@ -1149,9 +1157,9 @@ export const dataStore = {
     }): Promise<{ count: number }> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timeSlot.deleteMany({
+        return serializeDates(await db.timeSlot.deleteMany({
           where: where as Parameters<typeof db.timeSlot.deleteMany>[0]["where"],
-        });
+        }));
       }
       const before = store.timeSlots.length;
       store.timeSlots = store.timeSlots.filter(
@@ -1169,7 +1177,7 @@ export const dataStore = {
     }): Promise<TimeSlotRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timeSlot.delete({ where });
+        return serializeDates(await db.timeSlot.delete({ where }));
       }
       const idx = store.timeSlots.findIndex((t) => t.id === where.id);
       if (idx === -1) throw new Error("Créneau non trouvé");
@@ -1197,11 +1205,11 @@ export const dataStore = {
     } = {}): Promise<TimetableRecord[]> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timetable.findMany({
+        return serializeDates(await db.timetable.findMany({
           where: where as Parameters<typeof db.timetable.findMany>[0]["where"],
           include: include as Parameters<typeof db.timetable.findMany>[0]["include"],
           orderBy: orderBy as Parameters<typeof db.timetable.findMany>[0]["orderBy"],
-        });
+        }));
       }
       let results = store.timetables;
       if (where?.institutionId)
@@ -1273,10 +1281,10 @@ export const dataStore = {
     }): Promise<TimetableRecord | null> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timetable.findUnique({
+        return serializeDates(await db.timetable.findUnique({
           where,
           include: include as Parameters<typeof db.timetable.findUnique>[0]["include"],
-        });
+        }));
       }
       const tt = store.timetables.find((t) => t.id === where.id);
       if (!tt) return null;
@@ -1317,10 +1325,10 @@ export const dataStore = {
     }): Promise<TimetableRecord | null> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timetable.findFirst({
+        return serializeDates(await db.timetable.findFirst({
           where: where as Parameters<typeof db.timetable.findFirst>[0]["where"],
           include: include as Parameters<typeof db.timetable.findFirst>[0]["include"],
-        });
+        }));
       }
       let results = store.timetables;
       if (where.classId)
@@ -1346,9 +1354,9 @@ export const dataStore = {
     }): Promise<TimetableRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timetable.create({
+        return serializeDates(await db.timetable.create({
           data: data as Parameters<typeof db.timetable.create>[0]["data"],
-        });
+        }));
       }
       const now = new Date().toISOString();
       const record: TimetableRecord = {
@@ -1371,10 +1379,10 @@ export const dataStore = {
     }): Promise<TimetableRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timetable.update({
+        return serializeDates(await db.timetable.update({
           where,
           data: data as Parameters<typeof db.timetable.update>[0]["data"],
-        });
+        }));
       }
       const idx = store.timetables.findIndex((t) => t.id === where.id);
       if (idx === -1) throw new Error("Emploi du temps non trouvé");
@@ -1396,10 +1404,10 @@ export const dataStore = {
     }): Promise<{ count: number }> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timetable.updateMany({
+        return serializeDates(await db.timetable.updateMany({
           where: where as Parameters<typeof db.timetable.updateMany>[0]["where"],
           data: data as Parameters<typeof db.timetable.updateMany>[0]["data"],
-        });
+        }));
       }
       let count = 0;
       for (let i = 0; i < store.timetables.length; i++) {
@@ -1430,7 +1438,7 @@ export const dataStore = {
     }): Promise<TimetableRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timetable.delete({ where });
+        return serializeDates(await db.timetable.delete({ where }));
       }
       const idx = store.timetables.findIndex((t) => t.id === where.id);
       if (idx === -1) throw new Error("Emploi du temps non trouvé");
@@ -1474,11 +1482,11 @@ export const dataStore = {
     } = {}): Promise<TimetableSlotRecord[]> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timetableSlot.findMany({
+        return serializeDates(await db.timetableSlot.findMany({
           where: where as Parameters<typeof db.timetableSlot.findMany>[0]["where"],
           include: include as Parameters<typeof db.timetableSlot.findMany>[0]["include"],
           orderBy: orderBy as Parameters<typeof db.timetableSlot.findMany>[0]["orderBy"],
-        });
+        }));
       }
       let results = store.timetableSlots;
 
@@ -1533,10 +1541,10 @@ export const dataStore = {
     }): Promise<TimetableSlotRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timetableSlot.create({
+        return serializeDates(await db.timetableSlot.create({
           data: data as Parameters<typeof db.timetableSlot.create>[0]["data"],
           include: include as Parameters<typeof db.timetableSlot.create>[0]["include"],
-        });
+        }));
       }
       const now = new Date().toISOString();
       const record: TimetableSlotRecord = {
@@ -1570,11 +1578,11 @@ export const dataStore = {
     }): Promise<TimetableSlotRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timetableSlot.update({
+        return serializeDates(await db.timetableSlot.update({
           where,
           data: data as Parameters<typeof db.timetableSlot.update>[0]["data"],
           include: include as Parameters<typeof db.timetableSlot.update>[0]["include"],
-        });
+        }));
       }
       const idx = store.timetableSlots.findIndex((s) => s.id === where.id);
       if (idx === -1) throw new Error("Créneau d'emploi du temps non trouvé");
@@ -1602,7 +1610,7 @@ export const dataStore = {
     }): Promise<TimetableSlotRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timetableSlot.delete({ where });
+        return serializeDates(await db.timetableSlot.delete({ where }));
       }
       const idx = store.timetableSlots.findIndex((s) => s.id === where.id);
       if (idx === -1) throw new Error("Créneau d'emploi du temps non trouvé");
@@ -1618,9 +1626,9 @@ export const dataStore = {
     }): Promise<{ count: number }> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.timetableSlot.deleteMany({
+        return serializeDates(await db.timetableSlot.deleteMany({
           where: where as Parameters<typeof db.timetableSlot.deleteMany>[0]["where"],
-        });
+        }));
       }
       const before = store.timetableSlots.length;
       store.timetableSlots = store.timetableSlots.filter(
@@ -1655,10 +1663,10 @@ export const dataStore = {
     }): Promise<ShareTokenRecord | null> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.shareToken.findUnique({
+        return serializeDates(await db.shareToken.findUnique({
           where,
           include: include as Parameters<typeof db.shareToken.findUnique>[0]["include"],
-        });
+        }));
       }
       const token = store.shareTokens.find((st) => st.shareId === where.shareId) || null;
       if (!token) return null;
@@ -1713,9 +1721,9 @@ export const dataStore = {
     }): Promise<ShareTokenRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.shareToken.create({
+        return serializeDates(await db.shareToken.create({
           data: data as Parameters<typeof db.shareToken.create>[0]["data"],
-        });
+        }));
       }
       const now = new Date().toISOString();
       const record: ShareTokenRecord = {
@@ -1740,9 +1748,9 @@ export const dataStore = {
     } = {}): Promise<TeacherSubjectRecord[]> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.teacherSubject.findMany({
+        return serializeDates(await db.teacherSubject.findMany({
           where: where as Parameters<typeof db.teacherSubject.findMany>[0]["where"],
-        });
+        }));
       }
       let results = store.teacherSubjects;
       if (where?.teacherId)
@@ -1761,9 +1769,9 @@ export const dataStore = {
     }): Promise<TeacherSubjectRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.teacherSubject.create({
+        return serializeDates(await db.teacherSubject.create({
           data: data as Parameters<typeof db.teacherSubject.create>[0]["data"],
-        });
+        }));
       }
       const now = new Date().toISOString();
       const record: TeacherSubjectRecord = {
@@ -1784,9 +1792,9 @@ export const dataStore = {
     }): Promise<{ count: number }> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.teacherSubject.deleteMany({
+        return serializeDates(await db.teacherSubject.deleteMany({
           where: where as Parameters<typeof db.teacherSubject.deleteMany>[0]["where"],
-        });
+        }));
       }
       const before = store.teacherSubjects.length;
       store.teacherSubjects = store.teacherSubjects.filter((ts) => {
@@ -1811,9 +1819,9 @@ export const dataStore = {
     } = {}): Promise<ClassSubjectRecord[]> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.classSubject.findMany({
+        return serializeDates(await db.classSubject.findMany({
           where: where as Parameters<typeof db.classSubject.findMany>[0]["where"],
-        });
+        }));
       }
       let results = store.classSubjects;
       if (where?.classId)
@@ -1832,9 +1840,9 @@ export const dataStore = {
     }): Promise<ClassSubjectRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.classSubject.create({
+        return serializeDates(await db.classSubject.create({
           data: data as Parameters<typeof db.classSubject.create>[0]["data"],
-        });
+        }));
       }
       const now = new Date().toISOString();
       const record: ClassSubjectRecord = {
@@ -1855,9 +1863,9 @@ export const dataStore = {
     }): Promise<{ count: number }> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.classSubject.deleteMany({
+        return serializeDates(await db.classSubject.deleteMany({
           where: where as Parameters<typeof db.classSubject.deleteMany>[0]["where"],
-        });
+        }));
       }
       const before = store.classSubjects.length;
       store.classSubjects = store.classSubjects.filter((cs) => {
@@ -1878,7 +1886,7 @@ export const dataStore = {
     findMany: async (): Promise<AppConfigRecord[]> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.appConfig.findMany();
+        return serializeDates(await db.appConfig.findMany());
       }
       return store.appConfigs;
     },
@@ -1890,7 +1898,7 @@ export const dataStore = {
     }): Promise<AppConfigRecord | null> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.appConfig.findUnique({ where });
+        return serializeDates(await db.appConfig.findUnique({ where }));
       }
       if (where.key) {
         return store.appConfigs.find((ac) => ac.key === where.key) || null;
@@ -1908,9 +1916,9 @@ export const dataStore = {
     }): Promise<AppConfigRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.appConfig.create({
+        return serializeDates(await db.appConfig.create({
           data: data as Parameters<typeof db.appConfig.create>[0]["data"],
-        });
+        }));
       }
       const now = new Date().toISOString();
       const record: AppConfigRecord = {
@@ -1932,10 +1940,10 @@ export const dataStore = {
     }): Promise<AppConfigRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.appConfig.update({
+        return serializeDates(await db.appConfig.update({
           where,
           data: data as Parameters<typeof db.appConfig.update>[0]["data"],
-        });
+        }));
       }
       let idx = -1;
       if (where.key) {
@@ -1960,7 +1968,7 @@ export const dataStore = {
     }): Promise<AppConfigRecord> => {
       if (await isDatabaseAvailable()) {
         const { db } = await import("@/lib/db");
-        return db.appConfig.delete({ where });
+        return serializeDates(await db.appConfig.delete({ where }));
       }
       let idx = -1;
       if (where.key) {
@@ -1982,7 +1990,7 @@ export const dataStore = {
       if (await isDatabaseAvailable()) {
         try {
           const { db } = await import("@/lib/db");
-          if ((db as any).user) return db.user.findMany({ where: where as any });
+          if ((db as any).user) return serializeDates(await db.user.findMany({ where: where as any }));
         } catch {}
       }
       loadFromDisk(); // Always reload to sync across workers
@@ -1995,7 +2003,7 @@ export const dataStore = {
       if (await isDatabaseAvailable()) {
         try {
           const { db } = await import("@/lib/db");
-          if ((db as any).user) return db.user.findUnique({ where: where as any });
+          if ((db as any).user) return serializeDates(await db.user.findUnique({ where: where as any }));
         } catch {}
       }
       loadFromDisk(); // Always reload to sync across workers
@@ -2007,7 +2015,7 @@ export const dataStore = {
       if (await isDatabaseAvailable()) {
         try {
           const { db } = await import("@/lib/db");
-          if ((db as any).user) return db.user.create({ data: data as any });
+          if ((db as any).user) return serializeDates(await db.user.create({ data: data as any }));
         } catch {}
       }
       const now = new Date().toISOString();
@@ -2020,7 +2028,7 @@ export const dataStore = {
       if (await isDatabaseAvailable()) {
         try {
           const { db } = await import("@/lib/db");
-          if ((db as any).user) return db.user.update({ where, data: data as any });
+          if ((db as any).user) return serializeDates(await db.user.update({ where, data: data as any }));
         } catch {}
       }
       const idx = store.users.findIndex(u => u.id === where.id);
@@ -2033,7 +2041,7 @@ export const dataStore = {
       if (await isDatabaseAvailable()) {
         try {
           const { db } = await import("@/lib/db");
-          if ((db as any).user) return db.user.delete({ where });
+          if ((db as any).user) return serializeDates(await db.user.delete({ where }));
         } catch {}
       }
       const idx = store.users.findIndex(u => u.id === where.id);
@@ -2052,7 +2060,7 @@ export const dataStore = {
       if (await isDatabaseAvailable()) {
         try {
           const { db } = await import("@/lib/db");
-          if ((db as any).userInstitution) return db.userInstitution.findMany({ where: where as any });
+          if ((db as any).userInstitution) return serializeDates(await db.userInstitution.findMany({ where: where as any }));
         } catch {}
       }
       let results = store.userInstitutions;
@@ -2064,7 +2072,7 @@ export const dataStore = {
       if (await isDatabaseAvailable()) {
         try {
           const { db } = await import("@/lib/db");
-          if ((db as any).userInstitution) return db.userInstitution.create({ data: data as any });
+          if ((db as any).userInstitution) return serializeDates(await db.userInstitution.create({ data: data as any }));
         } catch {}
       }
       const now = new Date().toISOString();
@@ -2077,7 +2085,7 @@ export const dataStore = {
       if (await isDatabaseAvailable()) {
         try {
           const { db } = await import("@/lib/db");
-          if ((db as any).userInstitution) return db.userInstitution.update({ where, data: data as any });
+          if ((db as any).userInstitution) return serializeDates(await db.userInstitution.update({ where, data: data as any }));
         } catch {}
       }
       const idx = store.userInstitutions.findIndex(ui => ui.id === where.id);
@@ -2094,7 +2102,7 @@ export const dataStore = {
       if (await isDatabaseAvailable()) {
         try {
           const { db } = await import("@/lib/db");
-          if ((db as any).userInstitution) return db.userInstitution.delete({ where });
+          if ((db as any).userInstitution) return serializeDates(await db.userInstitution.delete({ where }));
         } catch {}
       }
       const idx = store.userInstitutions.findIndex(ui => ui.id === where.id);
@@ -2112,7 +2120,7 @@ export const dataStore = {
       if (await isDatabaseAvailable()) {
         try {
           const { db } = await import("@/lib/db");
-          if ((db as any).auditLog) return db.auditLog.findMany({ where: where as any, orderBy: { createdAt: 'desc' }, take });
+          if ((db as any).auditLog) return serializeDates(await db.auditLog.findMany({ where: where as any, orderBy: { createdAt: 'desc' }, take }));
         } catch {}
       }
       let results = store.auditLogs;
@@ -2127,7 +2135,7 @@ export const dataStore = {
       if (await isDatabaseAvailable()) {
         try {
           const { db } = await import("@/lib/db");
-          if ((db as any).auditLog) return db.auditLog.create({ data: data as any });
+          if ((db as any).auditLog) return serializeDates(await db.auditLog.create({ data: data as any }));
         } catch {}
       }
       const record: AuditLogRecord = { id: createId(), ...data, createdAt: new Date().toISOString() };

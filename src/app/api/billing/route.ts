@@ -26,18 +26,18 @@ export async function GET(req: NextRequest) {
 
     let plan = "free";
     if (adminRelation) {
-      const user = await dataStore.user.findUnique({ id: adminRelation.userId });
+      const user = await dataStore.user.findUnique({ where: { id: adminRelation.userId } });
       if (user) plan = user.plan || "free";
     }
 
     const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
 
     // Count current resources
-    const teachers = await dataStore.teacher.findMany({ institutionId });
-    const rooms = await dataStore.room.findMany({ institutionId });
-    const timetables = await dataStore.timetable.findMany({ institutionId });
-    const classes = await dataStore.class.findMany({ institutionId });
-    const subjects = await dataStore.subject.findMany({ institutionId });
+    const teachers = await dataStore.teacher.findMany({ where: { institutionId } });
+    const rooms = await dataStore.room.findMany({ where: { institutionId } });
+    const timetables = await dataStore.timetable.findMany({ where: { institutionId } });
+    const classes = await dataStore.class.findMany({ where: { institutionId } });
+    const subjects = await dataStore.subject.findMany({ where: { institutionId } });
     const allInstitutions = await dataStore.institution.findMany();
 
     const usage = {
@@ -88,22 +88,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Plan invalide" }, { status: 400 });
     }
 
-    const user = await dataStore.user.findUnique({ id: userId });
+    const user = await dataStore.user.findUnique({ where: { id: userId } });
     if (!user) {
       return NextResponse.json({ error: "Utilisateur non trouvé" }, { status: 404 });
     }
 
-    await dataStore.user.update(userId, {
+    await dataStore.user.update({ where: { id: userId }, data: {
       plan,
       planExpiresAt: plan !== "free" ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() : undefined,
-    });
+    } });
 
     // Log audit
     await dataStore.auditLog.create({
-      action: "PLAN_UPDATE",
-      entity: "User",
-      entityId: userId,
-      details: `Plan changé à ${plan}`,
+      data: {
+        action: "PLAN_UPDATE",
+        entity: "User",
+        entityId: userId,
+        details: `Plan changé à ${plan}`,
+      },
     });
 
     return NextResponse.json({ success: true, plan });

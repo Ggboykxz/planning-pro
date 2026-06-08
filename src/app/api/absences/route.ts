@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
         const teacher = await dataStore.teacher.findUnique({
           where: { id: absence.teacherId },
         });
-        let substituteTeacher = null;
+        let substituteTeacher: { firstName: string; lastName: string } | null = null;
         if (absence.substituteTeacherId) {
           substituteTeacher = await dataStore.teacher.findUnique({
             where: { id: absence.substituteTeacherId },

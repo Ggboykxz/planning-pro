@@ -19,7 +19,6 @@ export async function GET(request: NextRequest) {
     const holidays = await dataStore.holiday.findMany({
       where: {
         institutionId,
-        ...(year ? { year } : {}),
         ...(type ? { type } : {}),
       },
     });

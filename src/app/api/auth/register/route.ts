@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     const passwordHash = simpleHash(password);
 
     // Create institution if provided
-    let institutionId = null;
+    let institutionId: string | null = null;
     if (institutionName) {
       const inst = await dataStore.institution.create({
         data: {

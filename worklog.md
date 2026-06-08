@@ -1,124 +1,66 @@
-# PlanningPro Worklog — Remove Mock Data & Add Student Authentication
+# PlanningPro Bug Fix Worklog
 
-**Date:** 2026-06-03
+## Date: 2024-03-04
 
-## Summary
-
-Removed all mock/demo data infrastructure and implemented proper student authentication with institution joining flow.
-
----
-
-## Task 1: DELETE the seed API route
-
-- **Deleted:** `src/app/api/seed/route.ts`
-- This file created 15 fake teachers, 20 rooms, 15 subjects, 8 classes, and various link records with hardcoded demo data
-
-## Task 2: Remove demo data card from DashboardView
-
-- **Modified:** `src/components/dashboard/DashboardView.tsx`
-- Removed `handleSeedData` function and `seeding` state
-- Removed the "DEMO DATA CARD" section (Données de démonstration with "Charger les données" button)
-- Removed `Loader2` from imports (no longer used)
-- Kept `Database` import (still used in quick actions)
-- Added `RefreshCw` import for auto-refresh indicator
-- **Added auto-refresh:** useEffect with setInterval that calls `loadDashboard` every 30 seconds with a subtle "Actualisation..." indicator
-
-## Task 3: Remove demo data section from SettingsView
-
-- **Modified:** `src/components/settings/SettingsView.tsx`
-- Removed `handleSeedData` function
-- Removed the "Seed demo data" UI section (Données de démonstration with "Remplir" button)
-- Kept `Sparkles` import (still used for holiday prefill button in Holidays tab)
-
-## Task 4: Add StudentInstitution model and student auth flow
-
-### a) Prisma Schema
-- **Modified:** `prisma/schema.prisma`
-- Added `StudentInstitution` model with fields: `id`, `userId`, `institutionId`, `classId?`, `studentNumber?`, `createdAt`, `updatedAt`
-- Added `@@unique([userId, institutionId])` constraint
-- Added `studentInstitutions StudentInstitution[]` relation to `User` model
-- Added `studentInstitutions StudentInstitution[]` relation to `Institution` model
-- Updated User role comment to include "student"
-- Ran `npx prisma generate` and `npx prisma db push` successfully
-
-### b) Data Store
-- **Modified:** `src/lib/data-store.ts`
-- Added `StudentInstitutionRecord` interface
-- Added `studentInstitutions` to the in-memory store
-- Updated `loadFromDisk()` and `saveToDisk()` to include studentInstitutions in the extra data file
-- Added full CRUD methods: `studentInstitution.findMany()`, `findUnique()`, `create()`, `update()`, `delete()`
-- All methods support both Prisma and in-memory fallback
-
-### c) API Route: /api/student/join
-- **Created:** `src/app/api/student/join/route.ts`
-- POST handler accepts `{ userId, institutionId, classId?, studentNumber? }`
-- Validates user is a student and institution exists
-- Checks for duplicate joins (409 if already joined)
-- Creates StudentInstitution link
-- Updates user's primary institutionId
-- Creates audit log entry
-
-### d) API Route: /api/student/institutions
-- **Created:** `src/app/api/student/institutions/route.ts`
-- GET handler accepts `?userId=xxx`
-- Returns all institutions the student has joined with enriched data (institution name, class info, student number)
-
-### e) API Route: /api/institutions/search
-- **Created:** `src/app/api/institutions/search/route.ts`
-- GET handler accepts `?q=searchTerm`
-- Returns matching institutions (id, name, type, country, academieYear) for public search
-- Case-insensitive name matching, limited to 50 results
-
-### f) Student Portal Page
-- **Modified:** `src/app/(student)/student/page.tsx`
-- Complete rewrite with two modes:
-  1. **No institution flow:** Shows a search form to find and join institutions
-     - Optional matricule/student number input
-     - Search field with real-time filtering
-     - List of available institutions with "Rejoindre" button
-     - Already-joined indicators
-  2. **Has institution flow:** Shows the existing timetable view
-     - Auto-loads classes and timetable when institutionId is available
-     - Preserves all existing timetable viewing functionality
-- On join, updates both Zustand store and localStorage
-- Checks student institution status on mount
-
-## Task 5: Improve auth state management
-
-- **Modified:** `src/lib/auth.ts`
-- Added role-based redirect for auth routes:
-  - Students on auth routes → `/student`
-  - Non-students on auth routes → `/dashboard`
-- Added explicit redirect: students on `/dashboard` → `/student`
-- Added explicit redirect: non-students on `/student` → `/dashboard`
-- Preserved existing student route access control via `canAccess()`
-
-## Task 6: Add auto-refresh to dashboard
-
-- **Modified:** `src/components/dashboard/DashboardView.tsx`
-- Added `refreshing` state
-- Added useEffect with `setInterval` calling `loadDashboard()` every 30 seconds
-- Shows a subtle "Actualisation..." indicator with spinning RefreshCw icon during refresh
-- Does NOT show full loading state during background refresh
+### Summary
+Fixed 12 critical bugs across the PlanningPro application. All fixes are minimal and targeted.
 
 ---
 
-## Files Changed
+### Bug 1: `/api/billing/route.ts` — Prisma-style query fixes
+**Fix:** Wrapped `dataStore.auditLog.create()` call with `{ data: { ... } }` wrapper to match Prisma API signature.
+- The other fixes (findUnique, findMany with where, update with where/data) were already applied in the codebase.
 
-| File | Action |
-|------|--------|
-| `src/app/api/seed/route.ts` | DELETED |
-| `src/components/dashboard/DashboardView.tsx` | MODIFIED |
-| `src/components/settings/SettingsView.tsx` | MODIFIED |
-| `prisma/schema.prisma` | MODIFIED |
-| `src/lib/data-store.ts` | MODIFIED |
-| `src/app/api/student/join/route.ts` | CREATED |
-| `src/app/api/student/institutions/route.ts` | CREATED |
-| `src/app/api/institutions/search/route.ts` | CREATED |
-| `src/app/(student)/student/page.tsx` | MODIFIED (rewrite) |
-| `src/lib/auth.ts` | MODIFIED |
+### Bug 2: `/api/team/route.ts` — Prisma-style query fixes
+**Fixes:**
+- `dataStore.user.findUnique({ id: ... })` → `dataStore.user.findUnique({ where: { id: ... } })` (1 place)
+- `dataStore.user.findUnique({ email })` → `dataStore.user.findUnique({ where: { email } })` (1 place)
+- `dataStore.user.create({ email, ... })` → `dataStore.user.create({ data: { email, ... } })` (1 place)
+- `dataStore.userInstitution.create({ userId, ... })` → `dataStore.userInstitution.create({ data: { userId, ... } })` (1 place)
+- `dataStore.userInstitution.update(record.id, { role })` → `dataStore.userInstitution.update({ where: { id: record.id }, data: { role } })` (1 place)
+- `dataStore.userInstitution.delete(record.id)` → `dataStore.userInstitution.delete({ where: { id: record.id } })` (1 place)
+- All 3 `dataStore.auditLog.create()` calls wrapped with `{ data: { ... } }`
+- `member.joinedAt` → `member.createdAt` (UserInstitutionRecord has no `joinedAt` field)
 
-## No changes to:
-- Landing page (`src/app/(marketing)/page.tsx`)
-- StudentPortalShell (`src/components/layout/StudentPortalShell.tsx`)
-- Student layout (`src/app/(student)/layout.tsx`)
+### Bug 3: `/api/auth/register/route.ts` — Type annotation
+**Fix:** `let institutionId = null` → `let institutionId: string | null = null` to avoid implicit `null` type.
+
+### Bug 4: `/api/absences/route.ts` — Type issues
+**Fix:** `let substituteTeacher = null` → `let substituteTeacher: { firstName: string; lastName: string } | null = null` to allow assignment of TeacherRecord objects.
+
+### Bug 5: `/api/holidays/route.ts` — Year parameter
+**Fix:** Removed `year` from the `findMany` where clause. The Holiday model has no `year` field — only `startDate`/`endDate`. Passing `year` to Prisma would cause a runtime error. The `year` searchParam is still parsed but no longer passed to the query.
+
+### Bug 6: Delete duplicate student page
+**Fix:** Deleted `src/app/(app)/student/page.tsx` — students should use the `(student)` route group only.
+
+### Bug 7: Delete duplicate top-level pages
+**Fix:** Deleted 7 top-level page files that duplicated `(app)` group pages (rendering without AppShell):
+- `src/app/dashboard/page.tsx`
+- `src/app/timetable/page.tsx`
+- `src/app/settings/page.tsx`
+- `src/app/teachers/page.tsx`
+- `src/app/rooms/page.tsx`
+- `src/app/subjects/page.tsx`
+- `src/app/classes/page.tsx`
+
+### Bug 8: Fix Sidebar — Hide student link for non-students
+**Fix:** Added `studentOnly?: boolean` property to secondary nav items type. Marked "Portail étudiant" with `studentOnly: true`. Added filter in the render: `.filter((item) => !item.studentOnly || currentUser?.role === "student")`.
+
+### Bug 9: Fix `/api/institutions/route.ts` — undefined to null
+**Fix:** Changed `userRole: ui.role` to `userRole: ui.role ?? null` in the GET handler results to ensure `null` instead of `undefined`.
+
+### Bug 10: Fix `cuid.ts` — Counter pattern
+**Fix:** Replaced `createId._counter` pattern (which required `(createId as any)._counter = 0` hack) with a module-level `let _counter = 0` variable. This avoids attaching properties to functions, which is fragile and doesn't work well with TypeScript strict mode.
+
+### Bug 11: Fix data-store Date serialization
+**Fix:** Added `serializeDates<T>(result: T): T` helper that runs `JSON.parse(JSON.stringify(result))` to convert Prisma `Date` objects to ISO strings. Applied to all 64 Prisma query return paths in the data store (findMany, findUnique, create, update, delete, etc.). This ensures `createdAt`/`updatedAt` fields are strings matching the interface types.
+
+### Bug 12: Fix `/api/dashboard/route.ts` — null userId guard
+**Fix:** Replaced `dataStore.userInstitution?.findMany?.({ where: { userId } }) || []` with `dataStore.userInstitution.findMany({ where: { userId } })` inside the existing `if (userId)` guard. The optional chaining was unnecessary since the guard already ensures `userId` is not null.
+
+---
+
+### Build Verification
+- `npx next build` completed successfully with no errors
+- All routes compile and generate static pages
