@@ -1,66 +1,63 @@
-# PlanningPro Bug Fix Worklog
+---
+Task ID: 1
+Agent: Main
+Task: Fix chunk loading errors and improve site reliability
 
-## Date: 2024-03-04
-
-### Summary
-Fixed 12 critical bugs across the PlanningPro application. All fixes are minimal and targeted.
+Work Log:
+- Created app/error.tsx with auto-reload on chunk loading failures (stale deployment detection)
+- Updated ErrorBoundary to detect chunk load errors and auto-reload instead of showing error screen
+- Added global chunk error handler in root layout script that catches errors before React loads
+- All three layers of chunk error protection now in place: vanilla JS listener → React error boundary → Next.js error.tsx
 
 ---
+Task ID: 2
+Agent: Main
+Task: Delete seed route (mock data)
 
-### Bug 1: `/api/billing/route.ts` — Prisma-style query fixes
-**Fix:** Wrapped `dataStore.auditLog.create()` call with `{ data: { ... } }` wrapper to match Prisma API signature.
-- The other fixes (findUnique, findMany with where, update with where/data) were already applied in the codebase.
-
-### Bug 2: `/api/team/route.ts` — Prisma-style query fixes
-**Fixes:**
-- `dataStore.user.findUnique({ id: ... })` → `dataStore.user.findUnique({ where: { id: ... } })` (1 place)
-- `dataStore.user.findUnique({ email })` → `dataStore.user.findUnique({ where: { email } })` (1 place)
-- `dataStore.user.create({ email, ... })` → `dataStore.user.create({ data: { email, ... } })` (1 place)
-- `dataStore.userInstitution.create({ userId, ... })` → `dataStore.userInstitution.create({ data: { userId, ... } })` (1 place)
-- `dataStore.userInstitution.update(record.id, { role })` → `dataStore.userInstitution.update({ where: { id: record.id }, data: { role } })` (1 place)
-- `dataStore.userInstitution.delete(record.id)` → `dataStore.userInstitution.delete({ where: { id: record.id } })` (1 place)
-- All 3 `dataStore.auditLog.create()` calls wrapped with `{ data: { ... } }`
-- `member.joinedAt` → `member.createdAt` (UserInstitutionRecord has no `joinedAt` field)
-
-### Bug 3: `/api/auth/register/route.ts` — Type annotation
-**Fix:** `let institutionId = null` → `let institutionId: string | null = null` to avoid implicit `null` type.
-
-### Bug 4: `/api/absences/route.ts` — Type issues
-**Fix:** `let substituteTeacher = null` → `let substituteTeacher: { firstName: string; lastName: string } | null = null` to allow assignment of TeacherRecord objects.
-
-### Bug 5: `/api/holidays/route.ts` — Year parameter
-**Fix:** Removed `year` from the `findMany` where clause. The Holiday model has no `year` field — only `startDate`/`endDate`. Passing `year` to Prisma would cause a runtime error. The `year` searchParam is still parsed but no longer passed to the query.
-
-### Bug 6: Delete duplicate student page
-**Fix:** Deleted `src/app/(app)/student/page.tsx` — students should use the `(student)` route group only.
-
-### Bug 7: Delete duplicate top-level pages
-**Fix:** Deleted 7 top-level page files that duplicated `(app)` group pages (rendering without AppShell):
-- `src/app/dashboard/page.tsx`
-- `src/app/timetable/page.tsx`
-- `src/app/settings/page.tsx`
-- `src/app/teachers/page.tsx`
-- `src/app/rooms/page.tsx`
-- `src/app/subjects/page.tsx`
-- `src/app/classes/page.tsx`
-
-### Bug 8: Fix Sidebar — Hide student link for non-students
-**Fix:** Added `studentOnly?: boolean` property to secondary nav items type. Marked "Portail étudiant" with `studentOnly: true`. Added filter in the render: `.filter((item) => !item.studentOnly || currentUser?.role === "student")`.
-
-### Bug 9: Fix `/api/institutions/route.ts` — undefined to null
-**Fix:** Changed `userRole: ui.role` to `userRole: ui.role ?? null` in the GET handler results to ensure `null` instead of `undefined`.
-
-### Bug 10: Fix `cuid.ts` — Counter pattern
-**Fix:** Replaced `createId._counter` pattern (which required `(createId as any)._counter = 0` hack) with a module-level `let _counter = 0` variable. This avoids attaching properties to functions, which is fragile and doesn't work well with TypeScript strict mode.
-
-### Bug 11: Fix data-store Date serialization
-**Fix:** Added `serializeDates<T>(result: T): T` helper that runs `JSON.parse(JSON.stringify(result))` to convert Prisma `Date` objects to ISO strings. Applied to all 64 Prisma query return paths in the data store (findMany, findUnique, create, update, delete, etc.). This ensures `createdAt`/`updatedAt` fields are strings matching the interface types.
-
-### Bug 12: Fix `/api/dashboard/route.ts` — null userId guard
-**Fix:** Replaced `dataStore.userInstitution?.findMany?.({ where: { userId } }) || []` with `dataStore.userInstitution.findMany({ where: { userId } })` inside the existing `if (userId)` guard. The optional chaining was unnecessary since the guard already ensures `userId` is not null.
+Work Log:
+- Deleted src/app/api/seed/route.ts (contained 326 lines of hardcoded demo data)
+- Verified no other code references /api/seed
 
 ---
+Task ID: 3
+Agent: Main
+Task: Fix auth flow and root page routing
 
-### Build Verification
-- `npx next build` completed successfully with no errors
-- All routes compile and generate static pages
+Work Log:
+- Rewrote src/app/page.tsx to properly handle three states:
+  1. Not authenticated → show landing page (marketing)
+  2. Authenticated + no institution → show onboarding wizard
+  3. Authenticated + has institution → redirect to dashboard/student
+- Deleted conflicting (marketing) route group that shadowed the root page
+- Merged landing page content directly into root page
+- Fixed session restore flow using useAuth hook
+- Added role-based redirects (students → /student, admins → /dashboard)
+
+---
+Task ID: 4
+Agent: Main
+Task: Fix data store consistency for serverless workers
+
+Work Log:
+- Added syncFromDisk() rate-limited disk sync function (2-second minimum interval)
+- Added syncFromDisk() calls before ALL in-memory store read operations (21 findMany/findUnique methods)
+- Replaced raw loadFromDisk() calls with rate-limited syncFromDisk() in user and studentInstitution methods
+- This ensures data consistency across serverless workers that may have stale in-memory data
+
+---
+Task ID: 5
+Agent: Main
+Task: Build and push to GitHub
+
+Work Log:
+- Build succeeded (next build)
+- Committed all changes with detailed commit message
+- Push failed due to missing GitHub authentication credentials
+- All changes are committed locally and ready to push when credentials are available
+
+Stage Summary:
+- Fixed critical chunk loading error with 3-layer auto-reload protection
+- Removed all mock/demo data (seed route deleted)
+- Fixed root page routing for proper auth flow
+- Improved data consistency across serverless workers
+- Build passes successfully
