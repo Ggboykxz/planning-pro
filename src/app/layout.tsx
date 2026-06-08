@@ -53,6 +53,33 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
+              // Auto-reload on chunk loading errors (stale deployment)
+              window.addEventListener('error', function(e) {
+                var msg = (e.message || '').toLowerCase();
+                if (msg.includes('failed to load chunk') || msg.includes('loading chunk') || msg.includes('chunkloaderror') || msg.includes('__webpack_chunk_load__')) {
+                  if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(function(regs) {
+                      regs.forEach(function(r) { r.unregister(); });
+                      window.location.reload();
+                    });
+                  } else {
+                    window.location.reload();
+                  }
+                }
+              });
+              window.addEventListener('unhandledrejection', function(e) {
+                var msg = ((e.reason && e.reason.message) || '').toLowerCase();
+                if (msg.includes('failed to load chunk') || msg.includes('loading chunk') || msg.includes('chunkloaderror')) {
+                  if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(function(regs) {
+                      regs.forEach(function(r) { r.unregister(); });
+                      window.location.reload();
+                    });
+                  } else {
+                    window.location.reload();
+                  }
+                }
+              });
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
                   navigator.serviceWorker.register('/sw.js');

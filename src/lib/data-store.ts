@@ -407,6 +407,22 @@ function saveToDisk() {
 // Load on module init
 loadFromDisk();
 
+// Track last load time to avoid excessive disk reads
+let _lastLoadTime = 0;
+const LOAD_INTERVAL = 2000; // 2 seconds minimum between loads
+
+/**
+ * Sync in-memory store from disk before critical reads.
+ * This ensures data consistency across serverless workers.
+ * Called automatically before each findMany/findUnique in fallback mode.
+ */
+function syncFromDisk() {
+  const now = Date.now();
+  if (now - _lastLoadTime < LOAD_INTERVAL) return; // Don't reload too often
+  _lastLoadTime = now;
+  loadFromDisk();
+}
+
 // ─── Database availability check ─────────────────────────────────
 
 let _dbAvailable: boolean | null = null;
@@ -513,6 +529,7 @@ export const dataStore = {
         const { db } = await import("@/lib/db");
         return serializeDates(await db.institution.findMany());
       }
+      syncFromDisk();
       return store.institutions;
     },
 
@@ -525,6 +542,7 @@ export const dataStore = {
         const { db } = await import("@/lib/db");
         return serializeDates(await db.institution.findUnique({ where }));
       }
+      syncFromDisk();
       return store.institutions.find((i) => i.id === where.id) || null;
     },
 
@@ -666,6 +684,7 @@ export const dataStore = {
           include: include as Parameters<typeof db.teacher.findMany>[0]["include"],
         }));
       }
+      syncFromDisk();
       let results = store.teachers;
       if (where?.institutionId) {
         results = results.filter((t) => t.institutionId === where.institutionId);
@@ -695,6 +714,7 @@ export const dataStore = {
           select: select as Parameters<typeof db.teacher.findUnique>[0]["select"],
         }));
       }
+      syncFromDisk();
       const teacher = store.teachers.find((t) => t.id === where.id) || null;
       if (!teacher) return null;
       if (select?.firstName && select?.lastName) {
@@ -786,6 +806,7 @@ export const dataStore = {
           where: where as Parameters<typeof db.room.findMany>[0]["where"],
         }));
       }
+      syncFromDisk();
       if (where?.institutionId) {
         return store.rooms.filter((r) => r.institutionId === where.institutionId);
       }
@@ -806,6 +827,7 @@ export const dataStore = {
           select: select as Parameters<typeof db.room.findUnique>[0]["select"],
         }));
       }
+      syncFromDisk();
       const room = store.rooms.find((r) => r.id === where.id) || null;
       if (!room) return null;
       if (select?.name) {
@@ -888,6 +910,7 @@ export const dataStore = {
           where: where as Parameters<typeof db.subject.findMany>[0]["where"],
         }));
       }
+      syncFromDisk();
       if (where?.institutionId) {
         return store.subjects.filter((s) => s.institutionId === where.institutionId);
       }
@@ -980,6 +1003,7 @@ export const dataStore = {
           where: where as Parameters<typeof db.class.findMany>[0]["where"],
         }));
       }
+      syncFromDisk();
       if (where?.institutionId) {
         return store.classes.filter((c) => c.institutionId === where.institutionId);
       }
@@ -1000,6 +1024,7 @@ export const dataStore = {
           include: include as Parameters<typeof db.class.findUnique>[0]["include"],
         }));
       }
+      syncFromDisk();
       const cls = store.classes.find((c) => c.id === where.id) || null;
       if (!cls) return null;
       if (include?.subjects) {
@@ -1116,6 +1141,7 @@ export const dataStore = {
           orderBy: orderBy as Parameters<typeof db.timeSlot.findMany>[0]["orderBy"],
         }));
       }
+      syncFromDisk();
       let results = store.timeSlots;
       if (where?.institutionId) {
         results = results.filter((t) => t.institutionId === where.institutionId);
@@ -1211,6 +1237,7 @@ export const dataStore = {
           orderBy: orderBy as Parameters<typeof db.timetable.findMany>[0]["orderBy"],
         }));
       }
+      syncFromDisk();
       let results = store.timetables;
       if (where?.institutionId)
         results = results.filter((t) => t.institutionId === where.institutionId);
@@ -1286,6 +1313,7 @@ export const dataStore = {
           include: include as Parameters<typeof db.timetable.findUnique>[0]["include"],
         }));
       }
+      syncFromDisk();
       const tt = store.timetables.find((t) => t.id === where.id);
       if (!tt) return null;
 
@@ -1752,6 +1780,7 @@ export const dataStore = {
           where: where as Parameters<typeof db.teacherSubject.findMany>[0]["where"],
         }));
       }
+      syncFromDisk();
       let results = store.teacherSubjects;
       if (where?.teacherId)
         results = results.filter((ts) => ts.teacherId === where.teacherId);
@@ -1823,6 +1852,7 @@ export const dataStore = {
           where: where as Parameters<typeof db.classSubject.findMany>[0]["where"],
         }));
       }
+      syncFromDisk();
       let results = store.classSubjects;
       if (where?.classId)
         results = results.filter((cs) => cs.classId === where.classId);
@@ -1993,7 +2023,7 @@ export const dataStore = {
           if ((db as any).user) return serializeDates(await db.user.findMany({ where: where as any }));
         } catch {}
       }
-      loadFromDisk(); // Always reload to sync across workers
+      syncFromDisk();
       let results = store.users;
       if (where?.institutionId) results = results.filter(u => u.institutionId === where.institutionId);
       if (where?.email) results = results.filter(u => u.email === where.email);
@@ -2006,7 +2036,7 @@ export const dataStore = {
           if ((db as any).user) return serializeDates(await db.user.findUnique({ where: where as any }));
         } catch {}
       }
-      loadFromDisk(); // Always reload to sync across workers
+      syncFromDisk();
       if (where.id) return store.users.find(u => u.id === where.id) || null;
       if (where.email) return store.users.find(u => u.email === where.email) || null;
       return null;
@@ -2063,6 +2093,7 @@ export const dataStore = {
           if ((db as any).userInstitution) return serializeDates(await db.userInstitution.findMany({ where: where as any }));
         } catch {}
       }
+      syncFromDisk();
       let results = store.userInstitutions;
       if (where?.userId) results = results.filter(ui => ui.userId === where.userId);
       if (where?.institutionId) results = results.filter(ui => ui.institutionId === where.institutionId);
@@ -2123,6 +2154,7 @@ export const dataStore = {
           if ((db as any).auditLog) return serializeDates(await db.auditLog.findMany({ where: where as any, orderBy: { createdAt: 'desc' }, take }));
         } catch {}
       }
+      syncFromDisk();
       let results = store.auditLogs;
       if (where?.institutionId) results = results.filter(a => a.institutionId === where.institutionId);
       if (where?.userId) results = results.filter(a => a.userId === where.userId);
@@ -2155,6 +2187,7 @@ export const dataStore = {
           if ((db as any).absence) return (db as any).absence.findMany({ where: where as any });
         } catch {}
       }
+      syncFromDisk();
       let results = store.absences;
       if (where?.institutionId) results = results.filter((a) => a.institutionId === where.institutionId);
       if (where?.teacherId) results = results.filter((a) => a.teacherId === where.teacherId);
@@ -2222,6 +2255,7 @@ export const dataStore = {
           if ((db as any).holiday) return (db as any).holiday.findMany({ where: where as any });
         } catch {}
       }
+      syncFromDisk();
       let results = store.holidays;
       if (where?.institutionId) results = results.filter((h) => h.institutionId === where.institutionId);
       if (where?.year) results = results.filter((h) => h.startDate.startsWith(where.year!) || h.endDate.startsWith(where.year!));
@@ -2289,7 +2323,7 @@ export const dataStore = {
           if ((db as any).studentInstitution) return (db as any).studentInstitution.findMany({ where: where as any });
         } catch {}
       }
-      loadFromDisk();
+      syncFromDisk();
       let results = store.studentInstitutions;
       if (where?.userId) results = results.filter((si) => si.userId === where.userId);
       if (where?.institutionId) results = results.filter((si) => si.institutionId === where.institutionId);

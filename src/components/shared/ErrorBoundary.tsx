@@ -26,6 +26,28 @@ export class ErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Auto-reload on chunk loading errors (stale deployment after new build)
+    const isChunkError =
+      error.message?.includes("Failed to load chunk") ||
+      error.message?.includes("Loading chunk") ||
+      error.message?.includes("ChunkLoadError") ||
+      error.message?.includes("loading CSS chunk") ||
+      error.message?.includes("__webpack_chunk_load__");
+
+    if (isChunkError) {
+      // Clear stale service worker cache
+      if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (const registration of registrations) {
+            registration.unregister();
+          }
+        });
+      }
+      // Force reload from server (bypass cache)
+      window.location.reload();
+      return;
+    }
+
     console.error(
       `[ErrorBoundary${this.props.section ? ` - ${this.props.section}` : ""}]`,
       error,
@@ -34,7 +56,17 @@ export class ErrorBoundary extends React.Component<
   }
 
   handleReload = () => {
-    window.location.reload();
+    // Clear service worker and force reload
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const registration of registrations) {
+          registration.unregister();
+        }
+        window.location.reload();
+      });
+    } else {
+      window.location.reload();
+    }
   };
 
   render() {
