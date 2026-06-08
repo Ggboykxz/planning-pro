@@ -48,6 +48,7 @@ export async function POST(request: Request) {
         type: body.type || null,
         semester: body.semester || null,
         coefficient: body.coefficient || null,
+        color: body.color || null,
       },
     });
 
@@ -69,6 +70,27 @@ export async function POST(request: Request) {
       }
     }
 
+    // Create class-subject associations if DB available
+    if (body.classIds && Array.isArray(body.classIds) && await isDatabaseAvailable()) {
+      try {
+        const { db } = await import("@/lib/db");
+        for (const item of body.classIds) {
+          const classId = typeof item === "string" ? item : item.classId;
+          const hours = typeof item === "object" ? item.hoursPerWeek : null;
+          await db.classSubject.create({
+            data: {
+              classId,
+              subjectId: subject.id,
+              institutionId: body.institutionId,
+              hoursPerWeek: hours,
+            },
+          });
+        }
+      } catch {
+        // Silently skip class associations in fallback mode
+      }
+    }
+
     return NextResponse.json(subject);
   } catch (error) {
     console.error("POST /api/subjects error:", error);
@@ -82,7 +104,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, teacherIds, ...data } = body;
+    const { id, teacherIds, classIds, ...data } = body;
     if (!id) {
       return NextResponse.json({ error: "ID requis" }, { status: 400 });
     }
@@ -99,6 +121,23 @@ export async function PUT(request: Request) {
         for (const teacherId of teacherIds) {
           await db.teacherSubject.create({
             data: { teacherId, subjectId: id, institutionId: body.institutionId },
+          });
+        }
+      } catch {
+        // Silently skip in fallback mode
+      }
+    }
+
+    // Update class-subject associations if DB available
+    if (classIds !== undefined && Array.isArray(classIds) && await isDatabaseAvailable()) {
+      try {
+        const { db } = await import("@/lib/db");
+        await db.classSubject.deleteMany({ where: { subjectId: id } });
+        for (const item of classIds) {
+          const classId = typeof item === "string" ? item : item.classId;
+          const hours = typeof item === "object" ? item.hoursPerWeek : null;
+          await db.classSubject.create({
+            data: { classId, subjectId: id, institutionId: body.institutionId, hoursPerWeek: hours },
           });
         }
       } catch {

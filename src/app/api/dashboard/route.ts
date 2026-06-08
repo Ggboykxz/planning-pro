@@ -1,11 +1,17 @@
 import { dataStore, isDatabaseAvailable, checkPlanLimit, getPlanLimits } from "@/lib/data-store";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const institutionId = searchParams.get("institutionId");
-    const userId = searchParams.get("userId");
+    const userId = authUser.id;
     if (!institutionId) {
       return NextResponse.json({ error: "institutionId requis" }, { status: 400 });
     }

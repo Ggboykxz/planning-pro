@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dataStore } from "@/lib/data-store";
+import {
+  generateSessionToken,
+  getCookieOptions,
+  SESSION_COOKIE_NAME,
+} from "@/lib/auth-server";
 
 function simpleHash(str: string): string {
   let hash = 0;
@@ -51,8 +56,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Generate session token and set cookie
+    const token = generateSessionToken(user.id);
     const { passwordHash: _, ...userSafe } = user as any;
-    return NextResponse.json({ user: userSafe });
+
+    const response = NextResponse.json({ user: userSafe });
+    response.cookies.set(SESSION_COOKIE_NAME, token, getCookieOptions());
+
+    return response;
   } catch (error) {
     console.error("Login error:", error);
     return NextResponse.json({ error: "Erreur lors de la connexion" }, { status: 500 });

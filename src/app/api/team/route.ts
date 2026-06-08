@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dataStore } from "@/lib/data-store";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 
 // GET /api/team?institutionId=xxx
 export async function GET(req: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const institutionId = searchParams.get("institutionId");
 
@@ -45,6 +51,11 @@ export async function GET(req: NextRequest) {
 // POST /api/team - Invite a member
 export async function POST(req: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await req.json();
     const { institutionId, email, role, name } = body;
 
@@ -117,6 +128,11 @@ export async function POST(req: NextRequest) {
 // PUT /api/team - Update member role
 export async function PUT(req: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await req.json();
     const { institutionId, userId, role } = body;
 
@@ -159,6 +175,11 @@ export async function PUT(req: NextRequest) {
 // DELETE /api/team?institutionId=xxx&userId=yyy
 export async function DELETE(req: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const institutionId = searchParams.get("institutionId");
     const userId = searchParams.get("userId");

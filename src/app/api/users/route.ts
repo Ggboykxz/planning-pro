@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dataStore } from "@/lib/data-store";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 
 // Simple hash function (same as auth routes)
 function simpleHash(str: string): string {
@@ -12,16 +13,15 @@ function simpleHash(str: string): string {
   return `h_${Math.abs(hash).toString(36)}_${str.length}_${str.split('').reduce((a, c, i) => a + c.charCodeAt(0) * (i + 1), 0).toString(36)}`;
 }
 
-// GET /api/users?userId=... - returns current user info
+// GET /api/users - returns current user info
 export async function GET(req: NextRequest) {
   try {
-    const userId = req.nextUrl.searchParams.get("userId");
-
-    if (!userId) {
-      return NextResponse.json({ error: "ID utilisateur requis" }, { status: 400 });
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const user = await dataStore.user.findUnique({ where: { id: userId } });
+    const user = await dataStore.user.findUnique({ where: { id: authUser.id } });
     if (!user) {
       return NextResponse.json({ error: "Utilisateur non trouvé" }, { status: 404 });
     }
@@ -40,12 +40,14 @@ export async function GET(req: NextRequest) {
 // PUT /api/users - update user info
 export async function PUT(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { userId, name, avatar, currentPassword, newPassword } = body;
-
-    if (!userId) {
-      return NextResponse.json({ error: "ID utilisateur requis" }, { status: 400 });
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
+    const userId = authUser.id;
+
+    const body = await req.json();
+    const { name, avatar, currentPassword, newPassword } = body;
 
     const user = await dataStore.user.findUnique({ where: { id: userId } });
     if (!user) {

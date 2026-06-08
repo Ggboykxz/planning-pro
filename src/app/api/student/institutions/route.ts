@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dataStore } from "@/lib/data-store";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 
 interface JoinedInstitutionResult {
   id: string;
@@ -14,18 +15,17 @@ interface JoinedInstitutionResult {
   joinedAt: string;
 }
 
-// GET /api/student/institutions?userId=xxx — List institutions a student has joined
+// GET /api/student/institutions — List institutions a student has joined
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
-
-    if (!userId) {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
       return NextResponse.json(
-        { error: "userId est requis" },
-        { status: 400 }
+        { error: "Non authentifié" },
+        { status: 401 }
       );
     }
+    const userId = authUser.id;
 
     // Get all StudentInstitution records for this user
     const studentInstitutions = await dataStore.studentInstitution.findMany({

@@ -80,7 +80,7 @@ export function Sidebar({ institutionName }: SidebarProps) {
   // Fetch user's institutions
   useEffect(() => {
     if (currentUser?.id) {
-      fetch(`/api/institutions?userId=${currentUser.id}`)
+      fetch(`/api/institutions`)
         .then((res) => res.ok ? res.json() : [])
         .then((data: InstitutionOption[]) => {
           setInstitutions(data);

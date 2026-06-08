@@ -319,7 +319,7 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
   // Load user institutions
   useEffect(() => {
     if (currentUser?.id) {
-      fetch(`/api/institutions?userId=${currentUser.id}`)
+      fetch(`/api/institutions`)
         .then((res) => res.ok ? res.json() : [])
         .then((data) => setUserInstitutions(data))
         .catch(() => {});
@@ -369,7 +369,6 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: currentUser.id,
           name: newInstForm.name.trim(),
           type: newInstForm.type,
           country: newInstForm.country,
@@ -407,7 +406,7 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
     if (!currentUser?.id) return;
     setLeavingInstId(instId);
     try {
-      const res = await fetch(`/api/institutions?institutionId=${instId}&userId=${currentUser.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/institutions?institutionId=${instId}`, { method: "DELETE" });
       if (res.ok) {
         toast.success("Établissement quitté ✓");
         if (instId === institutionId) {
@@ -417,7 +416,7 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
             window.location.assign("/dashboard");
           }
         }
-        const data = await fetch(`/api/institutions?userId=${currentUser.id}`).then((r) => r.json());
+        const data = await fetch(`/api/institutions`).then((r) => r.json());
         setUserInstitutions(data);
       } else {
         const err = await res.json();

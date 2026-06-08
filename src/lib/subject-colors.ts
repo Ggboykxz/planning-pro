@@ -20,6 +20,16 @@ const SUBJECT_COLORS = [
   { bg: "#F1F8E9", text: "#33691E", dark: { bg: "#1A3313", text: "#AED581" } }, // Light Green
   { bg: "#E3F2FD", text: "#0D47A1", dark: { bg: "#0A2540", text: "#64B5F6" } }, // Blue2
   { bg: "#FCE4EC", text: "#880E4F", dark: { bg: "#4A0E2B", text: "#F48FB1" } }, // Pink2
+  { bg: "#F0FDF4", text: "#166534", dark: { bg: "#052E16", text: "#86EFAC" } }, // Emerald
+  { bg: "#ECFDF5", text: "#065F46", dark: { bg: "#022C22", text: "#6EE7B7" } }, // Mint
+  { bg: "#FDF2F8", text: "#9D174D", dark: { bg: "#500724", text: "#FBCFE8" } }, // Rose
+  { bg: "#EDE9FE", text: "#5B21B6", dark: { bg: "#2E1065", text: "#C4B5FD" } }, // Violet
+  { bg: "#F5F3FF", text: "#4C1D95", dark: { bg: "#2E1065", text: "#DDD6FE" } }, // Purple2
+  { bg: "#FFF7ED", text: "#9A3412", dark: { bg: "#431407", text: "#FED7AA" } }, // Orange3
+  { bg: "#FEF2F2", text: "#991B1B", dark: { bg: "#450A0A", text: "#FECACA" } }, // Red2
+  { bg: "#F0FDFA", text: "#134E4A", dark: { bg: "#042F2E", text: "#99F6E4" } }, // Teal2
+  { bg: "#EFF6FF", text: "#1E40AF", dark: { bg: "#172554", text: "#BFDBFE" } }, // Sky
+  { bg: "#FDF4FF", text: "#86198F", dark: { bg: "#4A044E", text: "#F0ABFC" } }, // Fuchsia
 ];
 
 export interface SubjectColor {

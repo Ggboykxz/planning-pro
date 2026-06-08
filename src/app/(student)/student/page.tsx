@@ -90,7 +90,7 @@ export default function StudentPortalPage() {
 
   const checkStudentInstitution = async () => {
     try {
-      const res = await fetch(`/api/student/institutions?userId=${currentUser?.id}`);
+      const res = await fetch(`/api/student/institutions`);
       if (res.ok) {
         const data: JoinedInstitution[] = await res.json();
         setJoinedInstitutions(data);

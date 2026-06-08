@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAppStore } from "@/lib/store";
@@ -8,8 +8,8 @@ import { useAuth } from "@/lib/auth";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import {
   Terminal, Sparkles, AlertTriangle, Building2, Share2, UserX, BarChart3,
-  ArrowRight, Check, Menu, X, Sun, Moon, ChevronRight, Zap, Shield, Clock,
-  Rocket, Globe, Users, Play, Cpu, Layers,
+  ArrowRight, Check, Menu, X, Sun, Moon, ChevronRight, Zap, Shield,
+  Rocket, Globe, Users, Cpu,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
@@ -67,30 +67,15 @@ function TerminalPreview() {
   );
 }
 
-// ─── Stat counter animation ──────────────────────────────
-function AnimatedNumber({ target, suffix = "" }: { target: number; suffix?: string }) {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    let start = 0;
-    const duration = 2000;
-    const stepTime = duration / target;
-    const timer = setInterval(() => {
-      start += 1;
-      setCount(start);
-      if (start >= target) clearInterval(timer);
-    }, stepTime);
-    return () => clearInterval(timer);
-  }, [target]);
-  return <span>{count}{suffix}</span>;
-}
-
 // ─── Landing Page Component ──────────────────────────────────
 function LandingPage() {
   const { theme, setTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => { setMounted(true); }, []);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   return (
     <div className="min-h-screen bg-[#FDFCFC] dark:bg-[#0A0A0A]">

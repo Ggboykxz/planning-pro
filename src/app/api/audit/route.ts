@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dataStore } from "@/lib/data-store";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 
 // GET /api/audit - returns audit logs with optional filters
 export async function GET(req: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
     const institutionId = req.nextUrl.searchParams.get("institutionId");
     const entity = req.nextUrl.searchParams.get("entity");
     const action = req.nextUrl.searchParams.get("action");
@@ -69,8 +74,13 @@ export async function GET(req: NextRequest) {
 // POST /api/audit - Create audit log entry (used for contact sales, etc.)
 export async function POST(req: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await req.json();
-    const { userId, institutionId, action, entity, details } = body;
+    const { institutionId, action, entity, details } = body;
 
     if (!action || !entity) {
       return NextResponse.json({ error: "action et entity requis" }, { status: 400 });
@@ -78,7 +88,7 @@ export async function POST(req: NextRequest) {
 
     const log = await dataStore.auditLog.create({
       data: {
-        userId: userId || undefined,
+        userId: authUser.id,
         institutionId: institutionId || undefined,
         action,
         entity,

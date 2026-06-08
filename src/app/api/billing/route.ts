@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dataStore } from "@/lib/data-store";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 
 const PLAN_LIMITS: Record<string, Record<string, number>> = {
   free: { teachers: 5, rooms: 5, timetables: 3, institutions: 1, classes: 5, subjects: 10 },
@@ -10,6 +11,10 @@ const PLAN_LIMITS: Record<string, Record<string, number>> = {
 // GET /api/billing?institutionId=xxx
 export async function GET(req: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
     const { searchParams } = new URL(req.url);
     const institutionId = searchParams.get("institutionId");
 
@@ -77,11 +82,17 @@ export async function GET(req: NextRequest) {
 // POST /api/billing - Update plan
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { userId, plan } = body;
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+    const userId = authUser.id;
 
-    if (!userId || !plan) {
-      return NextResponse.json({ error: "Champs requis manquants" }, { status: 400 });
+    const body = await req.json();
+    const { plan } = body;
+
+    if (!plan) {
+      return NextResponse.json({ error: "Plan requis" }, { status: 400 });
     }
 
     if (!["free", "pro", "enterprise"].includes(plan)) {

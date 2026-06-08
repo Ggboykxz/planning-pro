@@ -74,7 +74,7 @@ export default function PricingPage() {
   useEffect(() => {
     async function loadUsage() {
       try {
-        const res = await fetch(`/api/billing?userId=${currentUser?.id || ""}&institutionId=${institutionId || ""}`);
+        const res = await fetch(`/api/billing?institutionId=${institutionId || ""}`);
         if (res.ok) {
           const data = await res.json();
           setUsage(data.usage);

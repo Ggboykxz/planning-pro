@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dataStore } from "@/lib/data-store";
+import {
+  generateSessionToken,
+  getCookieOptions,
+  SESSION_COOKIE_NAME,
+} from "@/lib/auth-server";
 
 // Simple hash function (in production, use bcrypt)
 function simpleHash(str: string): string {
@@ -105,9 +110,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Return user without password
+    // Generate session token and set cookie
+    const token = generateSessionToken(user.id);
     const { passwordHash: _, ...userSafe } = user as any;
-    return NextResponse.json({ user: userSafe, institutionId }, { status: 201 });
+
+    const response = NextResponse.json({ user: userSafe, institutionId }, { status: 201 });
+    response.cookies.set(SESSION_COOKIE_NAME, token, getCookieOptions());
+
+    return response;
   } catch (error) {
     console.error("Registration error:", error);
     return NextResponse.json({ error: "Erreur lors de l'inscription" }, { status: 500 });

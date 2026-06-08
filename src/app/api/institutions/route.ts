@@ -1,16 +1,16 @@
 import { dataStore } from "@/lib/data-store";
 import { generateTimeSlots } from "@/lib/schedule-utils";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 import { NextResponse } from "next/server";
 
-// GET /api/institutions?userId=xxx - List all institutions the user has access to
+// GET /api/institutions - List all institutions the user has access to
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
-
-    if (!userId) {
-      return NextResponse.json({ error: "userId requis" }, { status: 400 });
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
+    const userId = authUser.id;
 
     // Get all UserInstitution records for this user
     const userInstitutions = await dataStore.userInstitution.findMany({
@@ -44,12 +44,14 @@ export async function GET(request: Request) {
 // POST /api/institutions - Create a new institution and link to user
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { userId, ...institutionData } = body;
-
-    if (!userId) {
-      return NextResponse.json({ error: "userId requis" }, { status: 400 });
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
+    const userId = authUser.id;
+
+    const body = await request.json();
+    const { ...institutionData } = body;
 
     if (!institutionData.name) {
       return NextResponse.json(
@@ -152,16 +154,21 @@ export async function POST(request: Request) {
   }
 }
 
-// DELETE /api/institutions?institutionId=xxx&userId=xxx - Leave/remove an institution
+// DELETE /api/institutions?institutionId=xxx - Leave/remove an institution
 export async function DELETE(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+    const userId = authUser.id;
+
     const { searchParams } = new URL(request.url);
     const institutionId = searchParams.get("institutionId");
-    const userId = searchParams.get("userId");
 
-    if (!institutionId || !userId) {
+    if (!institutionId) {
       return NextResponse.json(
-        { error: "institutionId et userId requis" },
+        { error: "institutionId requis" },
         { status: 400 }
       );
     }

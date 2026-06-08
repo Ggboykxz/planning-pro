@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Button } from "@/components/ui/button";
 import { StatBlock } from "./StatBlock";
 import { QuickActions } from "./QuickActions";
 import { DashboardCharts } from "./DashboardCharts";
@@ -10,10 +9,9 @@ import { useAppStore, type AppSection } from "@/lib/store";
 import {
   UserPlus, DoorOpen, BookOpen, Sparkles, CheckCircle2, Circle, ChevronRight,
   Database, Calendar, Clock, MapPin, Users, AlertTriangle,
-  Activity, Umbrella, Shield, Zap, ArrowRight, TrendingUp, RefreshCw
+  Activity, Umbrella, Shield, Zap, ArrowRight, TrendingUp, RefreshCw,
+  Terminal, Rocket
 } from "lucide-react";
-import { toast } from "sonner";
-import { useRouter } from "next/navigation";
 import { getSubjectColor } from "@/lib/subject-colors";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -102,10 +100,6 @@ function useAnimatedCounter(target: number, duration: number = 800) {
     }, stepTime);
     return () => clearInterval(timer);
   }, [target, duration]);
-  // Reset count when target changes to 0
-  if (target === 0 && count !== 0) {
-    // Will be caught on next render
-  }
   return target === 0 ? 0 : count;
 }
 
@@ -169,6 +163,53 @@ function getSeverityIcon(severity: string) {
   return <Shield className="h-3.5 w-3.5 text-[#9A9898] shrink-0" />;
 }
 
+// ─── Setup step card for first-use experience ───
+function SetupStepCard({
+  step,
+  icon,
+  title,
+  description,
+  onClick,
+  done,
+}: {
+  step: number;
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  onClick: () => void;
+  done: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-start gap-4 p-4 border border-[#E5E5E5] dark:border-[#2A2A2A] text-left hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors group"
+    >
+      <div className="flex items-center gap-3 shrink-0">
+        <div className={`h-8 w-8 flex items-center justify-center border ${
+          done
+            ? "border-[#201D1D] dark:border-[#FDFCFC] text-[#201D1D] dark:text-[#FDFCFC]"
+            : "border-[#D97706]/30 bg-[#D97706]/5 text-[#D97706]"
+        }`}>
+          {done ? <CheckCircle2 className="h-4 w-4" /> : icon}
+        </div>
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-bold text-[#9A9898] uppercase tracking-wider">Étape {step}</span>
+          {done && <span className="text-[9px] font-bold text-[#16A34A]">COMPLÉTÉ</span>}
+        </div>
+        <p className={`text-xs font-bold mt-0.5 ${done ? "text-[#646262] dark:text-[#9A9898] line-through" : "text-[#201D1D] dark:text-[#FDFCFC]"}`}>
+          {title}
+        </p>
+        <p className="text-[10px] text-[#9A9898] mt-0.5 leading-relaxed">{description}</p>
+      </div>
+      {!done && (
+        <ChevronRight className="h-4 w-4 text-[#9A9898] group-hover:text-[#201D1D] dark:group-hover:text-[#FDFCFC] transition-colors shrink-0 mt-1" />
+      )}
+    </button>
+  );
+}
+
 export function DashboardView({ institutionId }: DashboardViewProps) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -177,7 +218,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
 
   const loadDashboard = useCallback(async () => {
     try {
-      const res = await fetch(`/api/dashboard?institutionId=${institutionId}&userId=${currentUser?.id || ""}`);
+      const res = await fetch(`/api/dashboard?institutionId=${institutionId}`);
       if (res.ok) {
         const d = await res.json();
         setData(d);
@@ -238,6 +279,9 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
 
   const allConfigured = checklist.length > 0 && checklist.every((item) => item.done);
   const incompleteCount = checklist.filter((item) => !item.done).length;
+  const isFirstUse = data
+    ? data.teacherCount === 0 && data.roomCount === 0 && data.subjectCount === 0 && data.classCount === 0 && data.timetableCount === 0
+    : false;
 
   // Current date
   const today = new Date();
@@ -282,6 +326,114 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
 
   if (!data) return null;
 
+  // ═══ FIRST-USE EXPERIENCE ═══
+  if (isFirstUse) {
+    return (
+      <div className="space-y-8">
+        {/* Welcome banner */}
+        <div className="border border-[#D97706]/30 bg-[#D97706]/5 p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="h-12 w-12 flex items-center justify-center border border-[#D97706]/30 bg-[#D97706]/10 shrink-0">
+              <Terminal className="h-6 w-6 text-[#D97706]" />
+            </div>
+            <div className="flex-1">
+              <h1 className="text-xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+                Bienvenue sur PlanningPro, {currentUser?.name || "Utilisateur"}
+              </h1>
+              <p className="text-xs text-[#646262] dark:text-[#9A9898] mt-1 leading-relaxed">
+                Votre espace est prêt. Suivez les étapes ci-dessous pour configurer votre établissement et générer votre premier emploi du temps.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Setup steps */}
+        <div>
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-3">Configuration initiale</p>
+          <div className="space-y-2">
+            <SetupStepCard
+              step={1}
+              icon={<UserPlus className="h-4 w-4" />}
+              title="Ajouter des enseignants"
+              description="Renseignez les enseignants de votre établissement avec leurs disponibilités et spécialités."
+              onClick={() => setCurrentSection("teachers")}
+              done={data.teacherCount > 0}
+            />
+            <SetupStepCard
+              step={2}
+              icon={<DoorOpen className="h-4 w-4" />}
+              title="Créer des salles"
+              description="Définissez les salles disponibles avec leur capacité et leur type (amphi, TD, labo...)."
+              onClick={() => setCurrentSection("rooms")}
+              done={data.roomCount > 0}
+            />
+            <SetupStepCard
+              step={3}
+              icon={<BookOpen className="h-4 w-4" />}
+              title="Configurer les matières"
+              description="Ajoutez les matières enseignées avec leurs volumes horaires et coefficients."
+              onClick={() => setCurrentSection("subjects")}
+              done={data.subjectCount > 0}
+            />
+            <SetupStepCard
+              step={4}
+              icon={<Users className="h-4 w-4" />}
+              title="Créer les classes"
+              description="Définissez les classes ou groupes d'étudiants et associez-leur des matières."
+              onClick={() => setCurrentSection("classes")}
+              done={data.classCount > 0}
+            />
+            <SetupStepCard
+              step={5}
+              icon={<Sparkles className="h-4 w-4" />}
+              title="Générer l'emploi du temps"
+              description="Lancez la génération automatique par IA ou créez manuellement votre emploi du temps."
+              onClick={() => setCurrentSection("timetable")}
+              done={data.timetableCount > 0}
+            />
+          </div>
+        </div>
+
+        {/* Quick actions for first use */}
+        <div>
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-3">Commencer par</p>
+          <QuickActions actions={quickActions.slice(0, 4)} />
+        </div>
+
+        {/* Progress indicator */}
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Progression</p>
+            <span className="text-xs text-[#9A9898] font-mono">
+              {checklist.filter((c) => c.done).length}/{checklist.length}
+            </span>
+          </div>
+          <div className="h-1.5 bg-[#F8F7F7] dark:bg-[#1A1A1A] w-full">
+            <div
+              className="h-full bg-[#D97706] transition-all duration-500"
+              style={{ width: `${(checklist.filter((c) => c.done).length / checklist.length) * 100}%` }}
+            />
+          </div>
+          <p className="text-[10px] text-[#9A9898] mt-2">
+            {incompleteCount === 0
+              ? "Toutes les étapes sont complétées !"
+              : `${incompleteCount} étape${incompleteCount > 1 ? "s" : ""} restante${incompleteCount > 1 ? "s" : ""} avant de pouvoir générer un emploi du temps`
+            }
+          </p>
+        </div>
+
+        {/* Auto-refresh indicator */}
+        {refreshing && (
+          <div className="flex items-center gap-2 text-[10px] text-[#9A9898] font-mono">
+            <RefreshCw className="h-3 w-3 animate-spin" />
+            Actualisation...
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ═══ FULL DASHBOARD (has data) ═══
   return (
     <div className="space-y-8">
       {/* ═══ WELCOME BANNER ═══ */}
@@ -309,25 +461,6 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
             }`}>
               {currentPlan === "enterprise" ? <Zap className="h-4 w-4" /> : currentPlan === "pro" ? <TrendingUp className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
             </div>
-          </div>
-        </div>
-        {/* Quick summary row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
-          <div className="border border-[#F8F7F7] dark:border-[#1A1A1A] p-3">
-            <p className="text-lg font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.teacherCount}</p>
-            <p className="text-[10px] text-[#9A9898]">Enseignants</p>
-          </div>
-          <div className="border border-[#F8F7F7] dark:border-[#1A1A1A] p-3">
-            <p className="text-lg font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.roomCount}</p>
-            <p className="text-[10px] text-[#9A9898]">Salles</p>
-          </div>
-          <div className="border border-[#F8F7F7] dark:border-[#1A1A1A] p-3">
-            <p className="text-lg font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.timetableCount}</p>
-            <p className="text-[10px] text-[#9A9898]">Emplois du temps</p>
-          </div>
-          <div className="border border-[#F8F7F7] dark:border-[#1A1A1A] p-3">
-            <p className={`text-lg font-bold ${data.conflictCount > 0 ? "text-[#DC2626]" : "text-[#201D1D] dark:text-[#FDFCFC]"}`}>{data.conflictCount}</p>
-            <p className="text-[10px] text-[#9A9898]">Conflits</p>
           </div>
         </div>
       </div>
@@ -362,7 +495,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         </div>
       )}
 
-      {/* ═══ SETUP CHECKLIST ═══ */}
+      {/* ═══ SETUP CHECKLIST (shown when incomplete) ═══ */}
       {!allConfigured && (
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
           <div className="flex items-center justify-between mb-4">
@@ -398,7 +531,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
                 <span className={`text-xs flex-1 ${item.done ? "text-[#646262] dark:text-[#9A9898] line-through" : "text-[#201D1D] dark:text-[#FDFCFC] font-bold"}`}>
                   {item.label}
                 </span>
-                <span className="text-[10px] text-[#9A9898]">{item.count > 0 ? `${item.count}` : "0"}</span>
+                <span className="text-[10px] text-[#9A9898]">{item.count > 0 ? `${item.count}` : "—"}</span>
                 <ChevronRight className="h-3 w-3 text-[#9A9898] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
               </button>
             ))}
@@ -420,18 +553,18 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         </div>
       )}
 
-      {/* ═══ ANIMATED STATS ROW ═══ */}
+      {/* ═══ STATS ROW ═══ */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         <AnimatedStatBlock
           label="Enseignants"
           value={data.teacherCount}
-          sublabel={`${data.teacherWorkload.filter((t) => t.percentage > 80).length} avec charge élevée`}
+          sublabel={data.teacherCount > 0 ? `${data.teacherWorkload.filter((t) => t.percentage > 80).length} avec charge élevée` : undefined}
           onClick={() => setCurrentSection("teachers")}
         />
         <AnimatedStatBlock
           label="Salles"
           value={data.roomCount}
-          sublabel={`${data.roomUtilization.filter((r) => r.usedSlots > 0).length} utilisées`}
+          sublabel={data.roomCount > 0 ? `${data.roomUtilization.filter((r) => r.usedSlots > 0).length} utilisées` : undefined}
           onClick={() => setCurrentSection("rooms")}
         />
         <AnimatedStatBlock
@@ -552,11 +685,25 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
 
         {/* Upcoming Holidays */}
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Prochaines vacances</p>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">Prochaines vacances</p>
+            <button
+              onClick={() => setCurrentSection("holidays")}
+              className="text-[10px] text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] flex items-center gap-1"
+            >
+              Gérer <ChevronRight className="h-2.5 w-2.5" />
+            </button>
+          </div>
           {(!data.upcomingHolidays || data.upcomingHolidays.length === 0) ? (
             <div className="py-8 text-center">
               <Umbrella className="h-6 w-6 text-[#9A9898] mx-auto mb-2 opacity-30" />
               <p className="text-xs text-[#9A9898]">Aucune vacances à venir</p>
+              <button
+                onClick={() => setCurrentSection("holidays")}
+                className="text-[10px] text-[#D97706] hover:underline mt-2"
+              >
+                Ajouter des vacances
+              </button>
             </div>
           ) : (
             <div className="space-y-0">
@@ -649,11 +796,9 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
       )}
 
       {/* ═══ TEACHER WORKLOAD ═══ */}
-      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Charge des enseignants</p>
-        {data.teacherWorkload.length === 0 ? (
-          <p className="text-xs text-[#9A9898] py-4 text-center">Aucun enseignant configuré</p>
-        ) : (
+      {data.teacherWorkload.length > 0 && (
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Charge des enseignants</p>
           <div className="space-y-3 max-h-64 overflow-y-auto scrollbar-thin">
             {data.teacherWorkload.slice(0, 10).map((t) => (
               <div key={t.id} className="flex items-center gap-3">
@@ -672,15 +817,13 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ═══ RECENT TIMETABLES ═══ */}
-      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Emplois du temps récents</p>
-        {data.recentTimetables.length === 0 ? (
-          <p className="text-xs text-[#9A9898] py-4 text-center">Aucun emploi du temps créé</p>
-        ) : (
+      {data.recentTimetables.length > 0 && (
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Emplois du temps récents</p>
           <div className="space-y-0">
             {data.recentTimetables.map((tt) => (
               <div
@@ -697,8 +840,8 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ═══ ANALYTICS CHARTS ═══ */}
       <DashboardCharts
@@ -712,41 +855,38 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
       />
 
       {/* ═══ WEEKLY STATISTICS ═══ */}
-      <div>
-        <p className="text-xs font-bold text-[#9A9898] mb-2">Statistiques hebdomadaires</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
-            <Calendar className="h-4 w-4 text-[#9A9898] mb-2" />
-            <p className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.weeklyStats?.totalSlots ?? 0}</p>
-            <p className="text-[10px] text-[#9A9898]">Cours cette semaine</p>
-          </div>
-          <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
-            <Clock className="h-4 w-4 text-[#9A9898] mb-2" />
-            <p className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.weeklyStats?.totalHours ?? 0}h</p>
-            <p className="text-[10px] text-[#9A9898]">Heures enseignées</p>
-          </div>
-          <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
-            <Users className="h-4 w-4 text-[#9A9898] mb-2" />
-            <p className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.weeklyStats?.fillRate ?? 0}%</p>
-            <p className="text-[10px] text-[#9A9898]">Taux de remplissage</p>
-          </div>
-          <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
-            <AlertTriangle className="h-4 w-4 text-[#9A9898] mb-2" />
-            <p className={`text-2xl font-bold ${(data.weeklyStats?.conflictCount ?? 0) > 0 ? "text-[#DC2626]" : "text-[#201D1D] dark:text-[#FDFCFC]"}`}>{data.weeklyStats?.conflictCount ?? 0}</p>
-            <p className="text-[10px] text-[#9A9898]">Conflits détectés</p>
+      {(data.weeklyStats?.totalSlots ?? 0) > 0 && (
+        <div>
+          <p className="text-xs font-bold text-[#9A9898] mb-2">Statistiques hebdomadaires</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
+              <Calendar className="h-4 w-4 text-[#9A9898] mb-2" />
+              <p className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.weeklyStats?.totalSlots ?? 0}</p>
+              <p className="text-[10px] text-[#9A9898]">Cours cette semaine</p>
+            </div>
+            <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
+              <Clock className="h-4 w-4 text-[#9A9898] mb-2" />
+              <p className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.weeklyStats?.totalHours ?? 0}h</p>
+              <p className="text-[10px] text-[#9A9898]">Heures enseignées</p>
+            </div>
+            <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
+              <Users className="h-4 w-4 text-[#9A9898] mb-2" />
+              <p className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">{data.weeklyStats?.fillRate ?? 0}%</p>
+              <p className="text-[10px] text-[#9A9898]">Taux de remplissage</p>
+            </div>
+            <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
+              <AlertTriangle className="h-4 w-4 text-[#9A9898] mb-2" />
+              <p className={`text-2xl font-bold ${(data.weeklyStats?.conflictCount ?? 0) > 0 ? "text-[#DC2626]" : "text-[#201D1D] dark:text-[#FDFCFC]"}`}>{data.weeklyStats?.conflictCount ?? 0}</p>
+              <p className="text-[10px] text-[#9A9898]">Conflits détectés</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ═══ UPCOMING SCHEDULE ═══ */}
-      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Prochains cours</p>
-        {(data.upcomingSlots ?? []).length === 0 ? (
-          <div className="py-4 text-center">
-            <Clock className="h-6 w-6 text-[#9A9898] mx-auto mb-2 opacity-30" />
-            <p className="text-xs text-[#9A9898]">Aucun cours à venir cette semaine</p>
-          </div>
-        ) : (
+      {(data.upcomingSlots ?? []).length > 0 && (
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Prochains cours</p>
           <div className="space-y-0">
             {(data.upcomingSlots ?? []).map((slot, i) => {
               const subjectColor = getSubjectColor(slot.subjectName, document.documentElement.classList.contains("dark"));
@@ -789,15 +929,13 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
               );
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ═══ TEACHER WORKLOAD DISTRIBUTION CHART ═══ */}
-      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Répartition de la charge enseignante</p>
-        {data.teacherWorkload.length === 0 ? (
-          <p className="text-xs text-[#9A9898] py-4 text-center">Aucun enseignant configuré</p>
-        ) : (
+      {data.teacherWorkload.length > 0 && (
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Répartition de la charge enseignante</p>
           <ResponsiveContainer width="100%" height={Math.max(200, data.teacherWorkload.length * 32)}>
             <BarChart
               data={data.teacherWorkload.map((t) => ({
@@ -830,15 +968,13 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ═══ ROOM UTILIZATION HEATMAP ═══ */}
-      <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
-        <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Utilisation des salles</p>
-        {data.roomUtilization.length === 0 ? (
-          <p className="text-xs text-[#9A9898] py-4 text-center">Aucune salle configurée</p>
-        ) : (
+      {data.roomUtilization.length > 0 && (
+        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Utilisation des salles</p>
           <div className="overflow-x-auto">
             <div className="min-w-[500px]">
               <div className="grid gap-1 mb-1" style={{ gridTemplateColumns: `120px repeat(${Math.min(6, data.roomUtilization.length)}, 1fr)` }}>
@@ -901,8 +1037,8 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

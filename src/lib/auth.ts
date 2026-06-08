@@ -51,13 +51,13 @@ export function useAuth() {
     pathname.startsWith("/pricing") ||
     pathname.startsWith("/audit");
 
-  // Restore session from localStorage on mount
+  // Restore session from cookie (via /api/auth/me) on mount
   const restoreSession = useCallback(async () => {
     if (isChecking.current) return;
     isChecking.current = true;
 
     try {
-      // First try localStorage
+      // First try localStorage for immediate UI hydration
       const storedUser = localStorage.getItem("planningpro_user");
       if (storedUser) {
         try {
@@ -66,33 +66,41 @@ export function useAuth() {
           if (user.institutionId) {
             setInstitutionId(user.institutionId);
           }
-
-          // Verify session is still valid by hitting /api/auth/me
-          try {
-            const res = await fetch(`/api/auth/me?userId=${user.id}`);
-            if (res.ok) {
-              const data = await res.json();
-              if (data.user) {
-                const freshUser = data.user as AuthUser;
-                setCurrentUser(freshUser);
-                if (freshUser.institutionId) {
-                  setInstitutionId(freshUser.institutionId);
-                }
-                // Update localStorage with fresh data
-                localStorage.setItem("planningpro_user", JSON.stringify(freshUser));
-                return freshUser;
-              }
-            }
-          } catch {
-            // Network error - use cached user data
-            return user;
-          }
         } catch {
-          // Invalid stored data
           localStorage.removeItem("planningpro_user");
           setCurrentUser(null);
           setInstitutionId(null);
         }
+      }
+
+      // Verify session is still valid by hitting /api/auth/me
+      // Cookie is sent automatically by the browser
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            const freshUser = data.user as AuthUser;
+            setCurrentUser(freshUser);
+            if (freshUser.institutionId) {
+              setInstitutionId(freshUser.institutionId);
+            }
+            // Update localStorage with fresh data
+            localStorage.setItem("planningpro_user", JSON.stringify(freshUser));
+            return freshUser;
+          }
+        } else {
+          // Session invalid - clear stored data
+          localStorage.removeItem("planningpro_user");
+          setCurrentUser(null);
+          setInstitutionId(null);
+        }
+      } catch {
+        // Network error - use cached user data if available
+        if (storedUser) {
+          return JSON.parse(storedUser) as AuthUser;
+        }
+        return null;
       }
 
       // No stored user - clear state
@@ -106,7 +114,13 @@ export function useAuth() {
   }, [setCurrentUser, setInstitutionId]);
 
   // Logout function
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      // Call logout API to clear the session cookie
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Continue with local cleanup even if API call fails
+    }
     localStorage.removeItem("planningpro_user");
     setCurrentUser(null);
     setInstitutionId(null);
