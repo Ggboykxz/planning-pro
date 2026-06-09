@@ -15,9 +15,9 @@ export function StatBlock({ label, value, sublabel, onClick }: StatBlockProps) {
     <div
       onClick={onClick}
       className={cn(
-        "border border-[#E5E5E5] dark:border-[#2A2A2A] p-4 transition-colors duration-150",
+        "border border-[#E5E5E5] dark:border-[#2A2A2A] p-4 transition-all duration-200",
         isClickable && "stat-block-hover cursor-pointer",
-        isClickable && "hover:border-[#201D1D] dark:hover:border-[#FDFCFC]"
+        isClickable && "hover:border-[#D97706] dark:hover:border-[#D97706]"
       )}
     >
       <p className="text-3xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">{value}</p>

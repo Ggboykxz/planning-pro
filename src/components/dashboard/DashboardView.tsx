@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { StatBlock } from "./StatBlock";
 import { QuickActions } from "./QuickActions";
 import { DashboardCharts } from "./DashboardCharts";
@@ -10,7 +10,7 @@ import {
   UserPlus, DoorOpen, BookOpen, Sparkles, CheckCircle2, Circle, ChevronRight,
   Database, Calendar, Clock, MapPin, Users, AlertTriangle,
   Activity, Umbrella, Shield, Zap, ArrowRight, TrendingUp, RefreshCw,
-  Terminal, Rocket
+  Terminal
 } from "lucide-react";
 import { getSubjectColor } from "@/lib/subject-colors";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
@@ -169,6 +169,7 @@ function SetupStepCard({
   icon,
   title,
   description,
+  estimatedTime,
   onClick,
   done,
 }: {
@@ -176,35 +177,40 @@ function SetupStepCard({
   icon: React.ReactNode;
   title: string;
   description: string;
+  estimatedTime: string;
   onClick: () => void;
   done: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-start gap-4 p-4 border border-[#E5E5E5] dark:border-[#2A2A2A] text-left hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors group"
+      className="w-full flex items-start gap-4 p-5 border border-[#E5E5E5] dark:border-[#2A2A2A] text-left hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] hover:border-[#D97706] dark:hover:border-[#D97706] transition-all duration-200 group"
     >
       <div className="flex items-center gap-3 shrink-0">
-        <div className={`h-8 w-8 flex items-center justify-center border ${
+        <div className={`h-10 w-10 flex items-center justify-center border font-bold font-mono text-lg transition-all duration-200 ${
           done
-            ? "border-[#201D1D] dark:border-[#FDFCFC] text-[#201D1D] dark:text-[#FDFCFC]"
-            : "border-[#D97706]/30 bg-[#D97706]/5 text-[#D97706]"
+            ? "border-[#16A34A] bg-[#16A34A]/10 text-[#16A34A]"
+            : "border-[#D97706] bg-[#D97706]/10 text-[#D97706]"
         }`}>
-          {done ? <CheckCircle2 className="h-4 w-4" /> : icon}
+          {done ? <CheckCircle2 className="h-5 w-5" /> : step}
         </div>
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-[9px] font-bold text-[#9A9898] uppercase tracking-wider">Étape {step}</span>
+          <span className="text-[9px] text-[#D97706] font-mono">{estimatedTime}</span>
           {done && <span className="text-[9px] font-bold text-[#16A34A]">COMPLÉTÉ</span>}
         </div>
-        <p className={`text-xs font-bold mt-0.5 ${done ? "text-[#646262] dark:text-[#9A9898] line-through" : "text-[#201D1D] dark:text-[#FDFCFC]"}`}>
-          {title}
-        </p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className={`text-xs font-bold ${done ? "text-[#646262] dark:text-[#9A9898] line-through" : "text-[#201D1D] dark:text-[#FDFCFC]"}`}>
+            {title}
+          </span>
+          {!done && <span className="shrink-0">{icon}</span>}
+        </div>
         <p className="text-[10px] text-[#9A9898] mt-0.5 leading-relaxed">{description}</p>
       </div>
       {!done && (
-        <ChevronRight className="h-4 w-4 text-[#9A9898] group-hover:text-[#201D1D] dark:group-hover:text-[#FDFCFC] transition-colors shrink-0 mt-1" />
+        <ChevronRight className="h-4 w-4 text-[#9A9898] group-hover:text-[#D97706] transition-colors shrink-0 mt-1" />
       )}
     </button>
   );
@@ -213,18 +219,24 @@ function SetupStepCard({
 export function DashboardView({ institutionId }: DashboardViewProps) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [subjectData, setSubjectData] = useState<Array<{ name: string; hours: number }>>([]);
   const { currentUser, setCurrentSection } = useAppStore();
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const loadDashboard = useCallback(async () => {
+  const loadDashboard = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch(`/api/dashboard?institutionId=${institutionId}`);
-      if (res.ok) {
-        const d = await res.json();
+      setError(false);
+      const [dRes, sRes] = await Promise.all([
+        fetch(`/api/dashboard?institutionId=${institutionId}`, { signal }),
+        fetch(`/api/subjects?institutionId=${institutionId}`, { signal }),
+      ]);
+      if (dRes.ok) {
+        const d = await dRes.json();
         setData(d);
+      } else {
+        setError(true);
       }
-      // Load subject hours
-      const sRes = await fetch(`/api/subjects?institutionId=${institutionId}`);
       if (sRes.ok) {
         const subjects = await sRes.json();
         setSubjectData(
@@ -234,15 +246,20 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
           }))
         );
       }
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      console.error(err);
+      setError(true);
     } finally {
       setLoading(false);
     }
   }, [institutionId, currentUser?.id]);
 
   useEffect(() => {
-    loadDashboard();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    loadDashboard(controller.signal);
+    return () => controller.abort();
   }, [loadDashboard]);
 
   const quickActions = [
@@ -259,8 +276,10 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
 
   useEffect(() => {
     const interval = setInterval(async () => {
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
       setRefreshing(true);
-      await loadDashboard();
+      await loadDashboard(controller.signal);
       setRefreshing(false);
     }, 30000);
     return () => clearInterval(interval);
@@ -324,7 +343,29 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Tableau de bord</h1>
+          <p className="text-xs text-[#9A9898] mt-1">Erreur de chargement</p>
+        </div>
+        <div className="border border-[#DC2626] p-6 flex flex-col items-center gap-4">
+          <AlertTriangle className="h-8 w-8 text-[#DC2626]" />
+          <p className="text-xs text-[#201D1D] dark:text-[#FDFCFC] text-center">
+            Impossible de charger les données du tableau de bord.
+          </p>
+          <button
+            onClick={() => { setLoading(true); loadDashboard(); }}
+            className="text-xs px-4 py-2 border border-[#201D1D] dark:border-[#FDFCFC] text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#201D1D] hover:text-[#FDFCFC] dark:hover:bg-[#FDFCFC] dark:hover:text-[#0A0A0A] transition-colors"
+          >
+            <RefreshCw className="h-3 w-3 mr-1.5 inline" />
+            Réessayer
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ═══ FIRST-USE EXPERIENCE ═══
   if (isFirstUse) {
@@ -356,6 +397,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
               icon={<UserPlus className="h-4 w-4" />}
               title="Ajouter des enseignants"
               description="Renseignez les enseignants de votre établissement avec leurs disponibilités et spécialités."
+              estimatedTime="~2 min"
               onClick={() => setCurrentSection("teachers")}
               done={data.teacherCount > 0}
             />
@@ -364,6 +406,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
               icon={<DoorOpen className="h-4 w-4" />}
               title="Créer des salles"
               description="Définissez les salles disponibles avec leur capacité et leur type (amphi, TD, labo...)."
+              estimatedTime="~1 min"
               onClick={() => setCurrentSection("rooms")}
               done={data.roomCount > 0}
             />
@@ -372,6 +415,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
               icon={<BookOpen className="h-4 w-4" />}
               title="Configurer les matières"
               description="Ajoutez les matières enseignées avec leurs volumes horaires et coefficients."
+              estimatedTime="~2 min"
               onClick={() => setCurrentSection("subjects")}
               done={data.subjectCount > 0}
             />
@@ -380,6 +424,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
               icon={<Users className="h-4 w-4" />}
               title="Créer les classes"
               description="Définissez les classes ou groupes d'étudiants et associez-leur des matières."
+              estimatedTime="~2 min"
               onClick={() => setCurrentSection("classes")}
               done={data.classCount > 0}
             />
@@ -388,6 +433,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
               icon={<Sparkles className="h-4 w-4" />}
               title="Générer l'emploi du temps"
               description="Lancez la génération automatique par IA ou créez manuellement votre emploi du temps."
+              estimatedTime="~1 min"
               onClick={() => setCurrentSection("timetable")}
               done={data.timetableCount > 0}
             />
@@ -396,8 +442,21 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
 
         {/* Quick actions for first use */}
         <div>
-          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-3">Commencer par</p>
-          <QuickActions actions={quickActions.slice(0, 4)} />
+          <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-3">Actions rapides</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {quickActions.slice(0, 4).map((action, i) => (
+              <button
+                key={i}
+                onClick={action.onClick}
+                className="flex flex-col items-center gap-2 p-4 border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] hover:border-[#D97706] dark:hover:border-[#D97706] transition-all duration-200 group"
+              >
+                <div className="h-8 w-8 flex items-center justify-center border border-[#D97706]/30 bg-[#D97706]/5 text-[#D97706] group-hover:border-[#D97706] group-hover:bg-[#D97706]/10 transition-all">
+                  {action.icon}
+                </div>
+                <span className="text-[10px] font-bold text-center leading-tight">{action.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Progress indicator */}
