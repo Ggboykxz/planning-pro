@@ -9,7 +9,7 @@ import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import {
   Terminal, Sparkles, AlertTriangle, Building2, Share2, UserX, BarChart3,
   ArrowRight, Check, Menu, X, Sun, Moon, ChevronRight, Zap, Shield,
-  Rocket, Globe, Users, Cpu,
+  Rocket, Globe, Users, Cpu, Quote, Lock, Headphones, Timer,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
@@ -21,49 +21,270 @@ interface InstitutionData {
   country: string;
 }
 
-// ─── Terminal Preview Component ──────────────────────────────
-function TerminalPreview() {
-  const [currentLine, setCurrentLine] = useState(0);
-  const [isTyping, setIsTyping] = useState(false);
-  const lines = [
-    { prompt: "$", text: "planningpro generate --ai", delay: 0 },
-    { prompt: "⟩", text: "Analyse des contraintes...", delay: 800 },
-    { prompt: "⟩", text: "Détection de 3 conflits...", delay: 1600 },
-    { prompt: "⟩", text: "Optimisation en cours...", delay: 2400 },
-    { prompt: "✓", text: "Emploi du temps généré en 2.3s", delay: 3200 },
-    { prompt: "$", text: "_", delay: 4000 },
-  ];
+// ─── Scroll Animation Hook ──────────────────────────────────
+function useScrollAnimation(threshold = 0.15) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentLine((prev) => (prev < lines.length - 1 ? prev + 1 : prev));
-    }, 800);
-    return () => clearInterval(timer);
-  }, [lines.length]);
+    const element = ref.current;
+    if (!element) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.unobserve(element);
+        }
+      },
+      { threshold }
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [threshold]);
+
+  return { ref, isVisible };
+}
+
+// ─── Animated Section Wrapper ────────────────────────────────
+function AnimatedSection({
+  children,
+  className,
+  delay = 0,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  delay?: number;
+}) {
+  const { ref, isVisible } = useScrollAnimation(0.1);
 
   return (
-    <div className="bg-[#201D1D] dark:bg-[#111111] border border-[#2A2A2A] p-4 sm:p-6 text-xs sm:text-sm font-mono max-w-lg mx-auto shadow-2xl">
+    <div
+      ref={ref}
+      className={cn(
+        "transition-all duration-700 ease-out",
+        isVisible
+          ? "opacity-100 translate-y-0"
+          : "opacity-0 translate-y-6",
+        className
+      )}
+      style={{ transitionDelay: `${delay}ms` }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// ─── Counter Animation Component ─────────────────────────────
+function AnimatedCounter({ target, suffix = "" }: { target: number; suffix?: string }) {
+  const [count, setCount] = useState(0);
+  const { ref, isVisible } = useScrollAnimation(0.3);
+
+  useEffect(() => {
+    if (!isVisible) return;
+
+    let start = 0;
+    const duration = 2000;
+    const startTime = performance.now();
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // ease-out
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.floor(eased * target);
+
+      setCount(current);
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        setCount(target);
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }, [isVisible, target]);
+
+  return <span ref={ref}>{count}{suffix}</span>;
+}
+
+// ─── Terminal Preview Component ──────────────────────────────
+function TerminalPreview() {
+  const [visibleLines, setVisibleLines] = useState(0);
+  const [typedText, setTypedText] = useState("");
+
+  const [showCursor, setShowCursor] = useState(true);
+
+  const lines = [
+    { prompt: "$", text: "planningpro generate --ai --optimize", type: "command" },
+    { prompt: "⟩", text: "Chargement du modèle IA v2.1...", type: "output", speed: 30 },
+    { prompt: "⟩", text: "Analyse de 142 contraintes horaires...", type: "output", speed: 25 },
+    { prompt: "⟩", text: "Vérification disponibilité enseignants...", type: "output", speed: 20 },
+    { prompt: "!", text: "3 conflits détectés → résolution automatique", type: "warning", speed: 15 },
+    { prompt: "⟩", text: "Optimisation: 94.2% taux de remplissage", type: "output", speed: 25 },
+    { prompt: "✓", text: "Emploi du temps généré en 2.3s", type: "success", speed: 0 },
+    { prompt: "$", text: "", type: "prompt" },
+  ];
+
+  // Reveal lines one by one
+  useEffect(() => {
+    if (visibleLines >= lines.length) return;
+
+    const delays = [0, 600, 400, 500, 700, 500, 600, 400];
+    const currentDelay = delays[visibleLines] || 400;
+
+    const timer = setTimeout(() => {
+      setVisibleLines((prev) => prev + 1);
+    }, currentDelay);
+
+    return () => clearTimeout(timer);
+  }, [visibleLines, lines.length]);
+
+  // Typing animation for the first line
+  useEffect(() => {
+    const firstLine = lines[0].text;
+    if (visibleLines < 1) return;
+
+    let charIndex = 0;
+    const interval = setInterval(() => {
+      if (charIndex < firstLine.length) {
+        setTypedText(firstLine.slice(0, charIndex + 1));
+        charIndex++;
+      } else {
+        clearInterval(interval);
+      }
+    }, 45);
+
+    return () => clearInterval(interval);
+  }, [visibleLines]);
+
+  // Blinking cursor
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setShowCursor((prev) => !prev);
+    }, 530);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div
+      className="bg-[#201D1D] dark:bg-[#111111] border border-[#2A2A2A] p-4 sm:p-6 text-xs sm:text-sm font-mono max-w-lg mx-auto shadow-2xl relative"
+      style={{ boxShadow: "0 0 40px -12px rgba(217, 119, 6, 0.25), 0 25px 50px -12px rgba(0, 0, 0, 0.5)" }}
+    >
       <div className="flex items-center gap-2 mb-4 pb-3 border-b border-[#2A2A2A]">
         <div className="flex gap-1.5">
-          <div className="w-2.5 h-2.5 bg-[#DC2626]" />
-          <div className="w-2.5 h-2.5 bg-[#D97706]" />
-          <div className="w-2.5 h-2.5 bg-[#16A34A]" />
+          <div className="w-2.5 h-2.5 bg-[#DC2626]" style={{ borderRadius: 0 }} />
+          <div className="w-2.5 h-2.5 bg-[#D97706]" style={{ borderRadius: 0 }} />
+          <div className="w-2.5 h-2.5 bg-[#16A34A]" style={{ borderRadius: 0 }} />
         </div>
-        <span className="text-[#9A9898] text-[10px] ml-2">planningpro — terminal</span>
+        <span className="text-[#9A9898] text-[10px] ml-2">planningpro — terminal v2.1</span>
       </div>
-      <div className="space-y-1.5">
-        {lines.slice(0, currentLine + 1).map((line, i) => (
-          <div key={i} className="flex items-start gap-2 animate-in fade-in duration-300">
-            <span className={cn("shrink-0 font-bold", line.prompt === "✓" ? "text-[#16A34A]" : line.prompt === "$" ? "text-[#FDFCFC]" : "text-[#9A9898]")}>
+      <div className="space-y-1.5 min-h-[180px]">
+        {lines.slice(0, visibleLines).map((line, i) => (
+          <div
+            key={i}
+            className="flex items-start gap-2 animate-in fade-in duration-300"
+          >
+            <span
+              className={cn(
+                "shrink-0 font-bold",
+                line.type === "success"
+                  ? "text-[#16A34A]"
+                  : line.type === "warning"
+                  ? "text-[#D97706]"
+                  : line.type === "command" || line.type === "prompt"
+                  ? "text-[#FDFCFC]"
+                  : "text-[#9A9898]"
+              )}
+            >
               {line.prompt}
             </span>
-            <span className={cn(line.prompt === "✓" ? "text-[#16A34A]" : line.prompt === "$" ? "text-[#FDFCFC]" : "text-[#9A9898]")}>
-              {line.text}
+            <span
+              className={cn(
+                line.type === "success"
+                  ? "text-[#16A34A]"
+                  : line.type === "warning"
+                  ? "text-[#D97706]"
+                  : line.type === "command" || line.type === "prompt"
+                  ? "text-[#FDFCFC]"
+                  : "text-[#9A9898]"
+              )}
+            >
+              {i === 0 ? typedText : line.text}
+              {i === lines.length - 1 && showCursor && (
+                <span className="text-[#D97706] ml-0.5">█</span>
+              )}
             </span>
           </div>
         ))}
       </div>
     </div>
+  );
+}
+
+// ─── Testimonial Section ─────────────────────────────────────
+function TestimonialSection() {
+  const testimonials = [
+    {
+      quote: "PlanningPro a réduit notre temps de planification de 3 jours à 15 minutes. L'IA gère les conflits que nous mettions des heures à résoudre manuellement.",
+      name: "Dr. A. Konaté",
+      role: "Directeur — Université de Conakry",
+    },
+    {
+      quote: "L'interface en terminal, c'est exactement ce qu'il fallait. Simple, rapide, sans fioritures. Nos secrétaires l'ont adopté en une journée.",
+      name: "Mme C. Dubois",
+      role: "Chef de scolarité — Lycée Victor Hugo, Paris",
+    },
+    {
+      quote: "Le partage automatique via lien sécurisé a transformé notre communication avec les étudiants. Plus de papier, plus de confusion.",
+      name: "Prof. K. Mensah",
+      role: "Doyen — Université de Lomé",
+    },
+  ];
+
+  return (
+    <section className="bg-[#F8F7F7] dark:bg-[#111111] border-y border-[#E5E5E5] dark:border-[#2A2A2A]">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
+        <AnimatedSection>
+          <div className="text-center mb-12">
+            <span className="text-[10px] font-bold text-[#D97706] uppercase tracking-widest">
+              Témoignages
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-bold text-[#201D1D] dark:text-[#FDFCFC] mt-2">
+              Ils nous font confiance
+            </h2>
+            <p className="text-xs text-[#9A9898] mt-2 italic">
+              Retours de la phase de lancement — démonstration uniquement
+            </p>
+          </div>
+        </AnimatedSection>
+        <div className="grid sm:grid-cols-3 gap-4">
+          {testimonials.map((t, i) => (
+            <AnimatedSection key={i} delay={i * 100}>
+              <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#FDFCFC] dark:bg-[#0A0A0A] p-6 relative">
+                <Quote className="h-6 w-6 text-[#D97706]/20 absolute top-4 right-4" />
+                <div className="border-l-2 border-dashed border-[#D97706]/30 pl-4">
+                  <p className="text-xs text-[#646262] dark:text-[#9A9898] leading-relaxed italic mb-4">
+                    &ldquo;{t.quote}&rdquo;
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 mt-4 pt-4 border-t border-[#E5E5E5] dark:border-[#2A2A2A]">
+                  <div className="h-8 w-8 flex items-center justify-center border border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#F8F7F7] dark:bg-[#1A1A1A] text-[10px] font-bold text-[#D97706]">
+                    {t.name.charAt(0)}
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">{t.name}</p>
+                    <p className="text-[10px] text-[#9A9898]">{t.role}</p>
+                  </div>
+                </div>
+              </div>
+            </AnimatedSection>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -78,7 +299,7 @@ function LandingPage() {
   );
 
   return (
-    <div className="min-h-screen bg-[#FDFCFC] dark:bg-[#0A0A0A]">
+    <div className="min-h-screen bg-[#FDFCFC] dark:bg-[#0A0A0A] overflow-x-hidden">
       {/* Navbar */}
       <nav className="sticky top-0 z-50 border-b border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#FDFCFC]/95 dark:bg-[#0A0A0A]/95 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
@@ -99,18 +320,23 @@ function LandingPage() {
               <Link href="/login" className="text-xs text-[#201D1D] dark:text-[#FDFCFC] hover:opacity-70 transition-opacity">Se connecter</Link>
               <Link href="/register" className="text-xs font-bold bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-4 py-2 hover:opacity-80 transition-opacity">Essai gratuit</Link>
             </div>
-            <button className="md:hidden p-2 text-[#201D1D] dark:text-[#FDFCFC]" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label="Menu">
+            <button
+              className="md:hidden p-2.5 text-[#201D1D] dark:text-[#FDFCFC] min-h-[44px] min-w-[44px] flex items-center justify-center"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Menu"
+              aria-expanded={mobileMenuOpen}
+            >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
           </div>
           {mobileMenuOpen && (
-            <div className="md:hidden border-t border-[#E5E5E5] dark:border-[#2A2A2A] py-4 space-y-3 animate-in slide-in-from-top-1 duration-200">
-              <a href="#features" className="block text-xs text-[#646262] dark:text-[#9A9898] py-2" onClick={() => setMobileMenuOpen(false)}>Fonctionnalités</a>
-              <a href="#how-it-works" className="block text-xs text-[#646262] dark:text-[#9A9898] py-2" onClick={() => setMobileMenuOpen(false)}>Comment ça marche</a>
-              <a href="#pricing" className="block text-xs text-[#646262] dark:text-[#9A9898] py-2" onClick={() => setMobileMenuOpen(false)}>Tarifs</a>
-              <div className="flex gap-3 pt-2">
-                <Link href="/login" className="text-xs text-[#201D1D] dark:text-[#FDFCFC] py-2">Se connecter</Link>
-                <Link href="/register" className="text-xs font-bold bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-4 py-2">Essai gratuit</Link>
+            <div className="md:hidden border-t border-[#E5E5E5] dark:border-[#2A2A2A] py-4 space-y-1 mobile-menu-animate">
+              <a href="#features" className="block text-sm text-[#646262] dark:text-[#9A9898] py-3 px-2 min-h-[44px] flex items-center hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors" onClick={() => setMobileMenuOpen(false)}>Fonctionnalités</a>
+              <a href="#how-it-works" className="block text-sm text-[#646262] dark:text-[#9A9898] py-3 px-2 min-h-[44px] flex items-center hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors" onClick={() => setMobileMenuOpen(false)}>Comment ça marche</a>
+              <a href="#pricing" className="block text-sm text-[#646262] dark:text-[#9A9898] py-3 px-2 min-h-[44px] flex items-center hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors" onClick={() => setMobileMenuOpen(false)}>Tarifs</a>
+              <div className="flex gap-3 pt-3 px-2">
+                <Link href="/login" className="text-sm text-[#201D1D] dark:text-[#FDFCFC] py-2.5 px-4 min-h-[44px] flex items-center border border-[#E5E5E5] dark:border-[#2A2A2A]">Se connecter</Link>
+                <Link href="/register" className="text-sm font-bold bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-4 py-2.5 min-h-[44px] flex items-center">Essai gratuit</Link>
               </div>
             </div>
           )}
@@ -124,27 +350,31 @@ function LandingPage() {
 
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24 lg:py-32 relative">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 border border-[#D97706]/30 bg-[#D97706]/5 px-3 py-1.5 mb-6">
-                <Rocket className="h-3 w-3 text-[#D97706]" />
-                <span className="text-[10px] font-bold text-[#D97706]">NOUVEAU — LANCEMENT 2025</span>
+            <AnimatedSection>
+              <div>
+                <div className="inline-flex items-center gap-2 border border-[#D97706]/30 bg-[#D97706]/5 px-3 py-1.5 mb-6">
+                  <Rocket className="h-3 w-3 text-[#D97706]" />
+                  <span className="text-[10px] font-bold text-[#D97706]">NOUVEAU — LANCEMENT 2025</span>
+                </div>
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#201D1D] dark:text-[#FDFCFC] leading-tight mb-4">
+                  L&apos;emploi du temps, <span className="underline decoration-4 decoration-[#D97706] underline-offset-4">réinventé</span>.
+                </h1>
+                <p className="text-sm sm:text-base text-[#646262] dark:text-[#9A9898] leading-relaxed mb-8 max-w-md">
+                  Générez, optimisez et partagez vos emplois du temps en quelques secondes. L&apos;intelligence artificielle détecte les conflits et propose les meilleures organisations.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Link href="/register" className="inline-flex items-center justify-center gap-2 text-sm font-bold bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-6 py-3.5 hover:opacity-80 transition-opacity min-h-[44px]">
+                    Commencer gratuitement <ArrowRight className="h-4 w-4" />
+                  </Link>
+                  <a href="#features" className="inline-flex items-center justify-center gap-2 text-sm border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#201D1D] dark:text-[#FDFCFC] px-6 py-3.5 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors min-h-[44px]">
+                    Voir la démo <ChevronRight className="h-4 w-4" />
+                  </a>
+                </div>
               </div>
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#201D1D] dark:text-[#FDFCFC] leading-tight mb-4">
-                L&apos;emploi du temps, <span className="underline decoration-4 decoration-[#D97706] underline-offset-4">réinventé</span>.
-              </h1>
-              <p className="text-sm sm:text-base text-[#646262] dark:text-[#9A9898] leading-relaxed mb-8 max-w-md">
-                Générez, optimisez et partagez vos emplois du temps en quelques secondes. L&apos;intelligence artificielle détecte les conflits et propose les meilleures organisations.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Link href="/register" className="inline-flex items-center justify-center gap-2 text-sm font-bold bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-6 py-3 hover:opacity-80 transition-opacity">
-                  Commencer gratuitement <ArrowRight className="h-4 w-4" />
-                </Link>
-                <a href="#features" className="inline-flex items-center justify-center gap-2 text-sm border border-[#E5E5E5] dark:border-[#2A2A2A] text-[#201D1D] dark:text-[#FDFCFC] px-6 py-3 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors">
-                  Voir la démo <ChevronRight className="h-4 w-4" />
-                </a>
-              </div>
-            </div>
-            <div className="hidden lg:block"><TerminalPreview /></div>
+            </AnimatedSection>
+            <AnimatedSection delay={200} className="hidden lg:block">
+              <TerminalPreview />
+            </AnimatedSection>
           </div>
         </div>
       </section>
@@ -152,52 +382,58 @@ function LandingPage() {
       {/* Trust Indicators */}
       <section className="border-y border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#F8F7F7] dark:bg-[#111111]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
-          <div className="flex flex-col items-center text-center gap-4">
-            <div className="flex items-center gap-2">
-              <Globe className="h-4 w-4 text-[#D97706]" />
-              <span className="text-[10px] font-bold text-[#9A9898] uppercase tracking-widest">Disponible en Afrique et en Europe</span>
+          <AnimatedSection>
+            <div className="flex flex-col items-center text-center gap-4">
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4 text-[#D97706]" />
+                <span className="text-[10px] font-bold text-[#9A9898] uppercase tracking-widest">Disponible en Afrique et en Europe</span>
+              </div>
+              <p className="text-xs text-[#646262] dark:text-[#9A9898] max-w-lg leading-relaxed">
+                PlanningPro accompagne les établissements francophones dans leur planification. Conçu pour les réalités des universités, lycées et collèges d&apos;Afrique et d&apos;Europe.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-6 mt-2">
+                <div className="flex items-center gap-1.5">
+                  <Shield className="h-3 w-3 text-[#16A34A]" />
+                  <span className="text-[10px] text-[#9A9898]">Données sécurisées</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Zap className="h-3 w-3 text-[#D97706]" />
+                  <span className="text-[10px] text-[#9A9898]">Génération en secondes</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Users className="h-3 w-3 text-[#9A9898]" />
+                  <span className="text-[10px] text-[#9A9898]">Gratuit pendant le lancement</span>
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-[#646262] dark:text-[#9A9898] max-w-lg leading-relaxed">
-              PlanningPro accompagne les établissements francophones dans leur planification. Conçu pour les réalités des universités, lycées et collèges d&apos;Afrique et d&apos;Europe.
-            </p>
-            <div className="flex items-center gap-6 mt-2">
-              <div className="flex items-center gap-1.5">
-                <Shield className="h-3 w-3 text-[#16A34A]" />
-                <span className="text-[10px] text-[#9A9898]">Données sécurisées</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Zap className="h-3 w-3 text-[#D97706]" />
-                <span className="text-[10px] text-[#9A9898]">Génération en secondes</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Users className="h-3 w-3 text-[#9A9898]" />
-                <span className="text-[10px] text-[#9A9898]">Gratuit pendant le lancement</span>
-              </div>
-            </div>
-          </div>
+          </AnimatedSection>
         </div>
       </section>
 
       {/* How it works */}
       <section id="how-it-works" className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
-        <div className="text-center mb-12">
-          <span className="text-[10px] font-bold text-[#D97706] uppercase tracking-widest">Comment ça marche</span>
-          <h2 className="text-2xl sm:text-3xl font-bold text-[#201D1D] dark:text-[#FDFCFC] mt-2">3 étapes pour votre emploi du temps</h2>
-        </div>
+        <AnimatedSection>
+          <div className="text-center mb-12">
+            <span className="text-[10px] font-bold text-[#D97706] uppercase tracking-widest">Comment ça marche</span>
+            <h2 className="text-2xl sm:text-3xl font-bold text-[#201D1D] dark:text-[#FDFCFC] mt-2">3 étapes pour votre emploi du temps</h2>
+          </div>
+        </AnimatedSection>
         <div className="grid sm:grid-cols-3 gap-6">
           {[
             { step: "01", icon: Building2, title: "Configurez votre établissement", desc: "Renseignez vos enseignants, salles, matières et classes. Choisissez un modèle horaire adapté à votre système éducatif." },
             { step: "02", icon: Cpu, title: "Générez avec l'IA", desc: "Notre algorithme d'optimisation crée automatiquement un emploi du temps sans conflit, en respectant toutes vos contraintes." },
             { step: "03", icon: Share2, title: "Partagez et consultez", desc: "Partagez via lien sécurisé, exportez en PDF ou iCal. Les étudiants consultent leur emploi du temps en temps réel." },
-          ].map(({ step, icon: Icon, title, desc }) => (
-            <div key={step} className="relative border border-[#E5E5E5] dark:border-[#2A2A2A] p-6 hover:border-[#D97706]/50 transition-colors group">
-              <span className="text-4xl font-bold text-[#F8F7F7] dark:text-[#1A1A1A] absolute top-3 right-4 group-hover:text-[#D97706]/10 transition-colors">{step}</span>
-              <div className="h-10 w-10 flex items-center justify-center border border-[#D97706]/30 bg-[#D97706]/5 mb-4">
-                <Icon className="h-5 w-5 text-[#D97706]" />
+          ].map(({ step, icon: Icon, title, desc }, i) => (
+            <AnimatedSection key={step} delay={i * 100}>
+              <div className="relative border border-[#E5E5E5] dark:border-[#2A2A2A] p-6 hover:border-[#D97706]/50 transition-colors group h-full">
+                <span className="text-4xl font-bold text-[#F8F7F7] dark:text-[#1A1A1A] absolute top-3 right-4 group-hover:text-[#D97706]/10 transition-colors">{step}</span>
+                <div className="h-10 w-10 flex items-center justify-center border border-[#D97706]/30 bg-[#D97706]/5 mb-4">
+                  <Icon className="h-5 w-5 text-[#D97706]" />
+                </div>
+                <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-2">{title}</h3>
+                <p className="text-xs text-[#9A9898] leading-relaxed">{desc}</p>
               </div>
-              <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-2">{title}</h3>
-              <p className="text-xs text-[#9A9898] leading-relaxed">{desc}</p>
-            </div>
+            </AnimatedSection>
           ))}
         </div>
       </section>
@@ -205,11 +441,13 @@ function LandingPage() {
       {/* Features */}
       <section id="features" className="bg-[#F8F7F7] dark:bg-[#111111] border-y border-[#E5E5E5] dark:border-[#2A2A2A]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
-          <div className="text-center mb-12">
-            <span className="text-[10px] font-bold text-[#9A9898] uppercase tracking-widest">Fonctionnalités</span>
-            <h2 className="text-2xl sm:text-3xl font-bold text-[#201D1D] dark:text-[#FDFCFC] mt-2">Tout ce dont vous avez besoin</h2>
-            <p className="text-xs text-[#9A9898] mt-2 max-w-md mx-auto">Un outil complet pour gérer les emplois du temps de vos établissements, de la planification à l&apos;analyse.</p>
-          </div>
+          <AnimatedSection>
+            <div className="text-center mb-12">
+              <span className="text-[10px] font-bold text-[#9A9898] uppercase tracking-widest">Fonctionnalités</span>
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#201D1D] dark:text-[#FDFCFC] mt-2">Tout ce dont vous avez besoin</h2>
+              <p className="text-xs text-[#9A9898] mt-2 max-w-md mx-auto">Un outil complet pour gérer les emplois du temps de vos établissements, de la planification à l&apos;analyse.</p>
+            </div>
+          </AnimatedSection>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
               { icon: Sparkles, title: "Génération IA", desc: "Générez automatiquement des emplois du temps optimisés grâce à notre moteur d'intelligence artificielle avancé." },
@@ -218,74 +456,112 @@ function LandingPage() {
               { icon: Share2, title: "Partage & Export", desc: "Partagez via lien sécurisé ou exportez en PDF, image et iCal pour une diffusion simple." },
               { icon: UserX, title: "Gestion des absences", desc: "Signalez et gérez les absences des enseignants avec attribution automatique de remplaçants." },
               { icon: BarChart3, title: "Analytics avancées", desc: "Tableaux de bord et statistiques détaillées pour optimiser l'utilisation des ressources." },
-            ].map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="border border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#FDFCFC] dark:bg-[#0A0A0A] p-6 hover:border-[#D97706]/30 transition-all group">
-                <div className="h-10 w-10 flex items-center justify-center border border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#F8F7F7] dark:bg-[#1A1A1A] mb-4 group-hover:border-[#D97706]/30 group-hover:bg-[#D97706]/5 transition-all">
-                  <Icon className="h-5 w-5 text-[#201D1D] dark:text-[#FDFCFC] group-hover:text-[#D97706] transition-colors" />
+            ].map(({ icon: Icon, title, desc }, i) => (
+              <AnimatedSection key={title} delay={i * 60}>
+                <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#FDFCFC] dark:bg-[#0A0A0A] p-6 hover:border-[#D97706]/30 transition-all group h-full">
+                  <div className="h-10 w-10 flex items-center justify-center border border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#F8F7F7] dark:bg-[#1A1A1A] mb-4 group-hover:border-[#D97706]/30 group-hover:bg-[#D97706]/5 transition-all">
+                    <Icon className="h-5 w-5 text-[#201D1D] dark:text-[#FDFCFC] group-hover:text-[#D97706] transition-colors" />
+                  </div>
+                  <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-2">{title}</h3>
+                  <p className="text-xs text-[#9A9898] leading-relaxed">{desc}</p>
                 </div>
-                <h3 className="text-sm font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-2">{title}</h3>
-                <p className="text-xs text-[#9A9898] leading-relaxed">{desc}</p>
-              </div>
+              </AnimatedSection>
             ))}
           </div>
         </div>
       </section>
 
+      {/* Testimonials */}
+      <TestimonialSection />
+
       {/* Pricing */}
       <section id="pricing" className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
-        <div className="text-center mb-12">
-          <span className="text-[10px] font-bold text-[#9A9898] uppercase tracking-widest">Tarifs</span>
-          <h2 className="text-2xl sm:text-3xl font-bold text-[#201D1D] dark:text-[#FDFCFC] mt-2">Simple et transparent</h2>
-          <p className="text-xs text-[#9A9898] mt-2">Commencez gratuitement, évoluez selon vos besoins.</p>
-        </div>
+        <AnimatedSection>
+          <div className="text-center mb-12">
+            <span className="text-[10px] font-bold text-[#9A9898] uppercase tracking-widest">Tarifs</span>
+            <h2 className="text-2xl sm:text-3xl font-bold text-[#201D1D] dark:text-[#FDFCFC] mt-2">Simple et transparent</h2>
+            <p className="text-xs text-[#9A9898] mt-2">Commencez gratuitement, évoluez selon vos besoins.</p>
+          </div>
+        </AnimatedSection>
         <div className="grid sm:grid-cols-3 gap-4 max-w-4xl mx-auto">
           {[
             { name: "Gratuit", price: "0€", features: ["1 établissement", "5 enseignants maximum", "Génération manuelle", "Export PDF"], cta: "Commencer" },
             { name: "Pro", price: "29€", features: ["Établissements illimités", "Enseignants illimités", "Génération IA", "Détection de conflits", "Export PDF & iCal", "Analytics avancées"], cta: "Essai gratuit 14 jours", highlighted: true },
             { name: "Enterprise", price: "99€", features: ["Tout le plan Pro", "API dédiée", "SSO & intégrations", "Account manager dédié", "Formation personnalisée"], cta: "Contacter l'équipe" },
-          ].map((plan) => (
-            <div key={plan.name} className={cn("border p-6 flex flex-col", plan.highlighted ? "border-[#D97706] bg-[#201D1D] dark:bg-[#FDFCFC] relative" : "border-[#E5E5E5] dark:border-[#2A2A2A]")}>
-              {plan.highlighted && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-bold bg-[#D97706] text-white px-3 py-1">POPULAIRE</span>
-              )}
-              <h3 className={cn("text-sm font-bold mb-1", plan.highlighted ? "text-[#FDFCFC] dark:text-[#0A0A0A]" : "text-[#201D1D] dark:text-[#FDFCFC]")}>{plan.name}</h3>
-              <div className="mb-6 mt-2">
-                <span className={cn("text-3xl font-bold", plan.highlighted ? "text-[#FDFCFC] dark:text-[#0A0A0A]" : "text-[#201D1D] dark:text-[#FDFCFC]")}>{plan.price}</span>
-                <span className="text-xs text-[#9A9898]">/mois</span>
+          ].map((plan, i) => (
+            <AnimatedSection key={plan.name} delay={i * 100}>
+              <div className={cn("border p-6 flex flex-col h-full", plan.highlighted ? "border-[#D97706] bg-[#201D1D] dark:bg-[#FDFCFC] relative" : "border-[#E5E5E5] dark:border-[#2A2A2A]")}>
+                {plan.highlighted && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-bold bg-[#D97706] text-white px-3 py-1">POPULAIRE</span>
+                )}
+                <h3 className={cn("text-sm font-bold mb-1", plan.highlighted ? "text-[#FDFCFC] dark:text-[#0A0A0A]" : "text-[#201D1D] dark:text-[#FDFCFC]")}>{plan.name}</h3>
+                <div className="mb-6 mt-2">
+                  <span className={cn("text-3xl font-bold", plan.highlighted ? "text-[#FDFCFC] dark:text-[#0A0A0A]" : "text-[#201D1D] dark:text-[#FDFCFC]")}>{plan.price}</span>
+                  <span className="text-xs text-[#9A9898]">/mois</span>
+                </div>
+                <ul className="space-y-2 mb-6 flex-1">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-xs">
+                      <Check className={cn("h-3 w-3 mt-0.5 shrink-0", plan.highlighted ? "text-[#D97706]" : "text-[#16A34A]")} />
+                      <span className={cn(plan.highlighted ? "text-[#FDFCFC]/80 dark:text-[#0A0A0A]/80" : "text-[#646262] dark:text-[#9A9898]")}>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Link href="/register" className={cn("block text-center text-xs font-bold py-3 border transition-colors min-h-[44px] flex items-center justify-center", plan.highlighted ? "border-[#D97706] text-[#D97706] hover:bg-[#D97706] hover:text-white" : "border-[#E5E5E5] dark:border-[#2A2A2A] text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]")}>
+                  {plan.cta}
+                </Link>
               </div>
-              <ul className="space-y-2 mb-6 flex-1">
-                {plan.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-xs">
-                    <Check className={cn("h-3 w-3 mt-0.5 shrink-0", plan.highlighted ? "text-[#D97706]" : "text-[#16A34A]")} />
-                    <span className={cn(plan.highlighted ? "text-[#FDFCFC]/80 dark:text-[#0A0A0A]/80" : "text-[#646262] dark:text-[#9A9898]")}>{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <Link href="/register" className={cn("block text-center text-xs font-bold py-3 border transition-colors", plan.highlighted ? "border-[#D97706] text-[#D97706] hover:bg-[#D97706] hover:text-white" : "border-[#E5E5E5] dark:border-[#2A2A2A] text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]")}>
-                {plan.cta}
-              </Link>
-            </div>
+            </AnimatedSection>
           ))}
         </div>
       </section>
 
       {/* CTA */}
       <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
-        <div className="border border-[#201D1D] dark:border-[#FDFCFC] bg-[#201D1D] dark:bg-[#FDFCFC] p-8 sm:p-12 text-center relative overflow-hidden">
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjA1KSIgc3Ryb2tlLXdpZHRoPSIwLjUiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-50" />
-          <div className="relative">
-            <h2 className="text-2xl sm:text-3xl font-bold text-[#FDFCFC] dark:text-[#0A0A0A] mb-3">Prêt à réinventer vos emplois du temps ?</h2>
-            <p className="text-xs sm:text-sm text-[#FDFCFC]/70 dark:text-[#0A0A0A]/70 mb-6 max-w-md mx-auto">
-              Rejoignez les premiers établissements qui font confiance à PlanningPro pour une planification intelligente et sans stress.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Link href="/register" className="inline-flex items-center justify-center gap-2 text-sm font-bold border border-[#D97706] text-[#D97706] px-6 py-3 hover:bg-[#D97706] hover:text-[#201D1D] transition-colors">
-                Essai gratuit 14 jours <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link href="/login" className="inline-flex items-center justify-center gap-2 text-sm text-[#FDFCFC]/70 dark:text-[#0A0A0A]/70 hover:text-[#FDFCFC] dark:hover:text-[#0A0A0A] px-6 py-3 transition-colors">Se connecter</Link>
+        <AnimatedSection>
+          <div className="border border-[#201D1D] dark:border-[#FDFCFC] bg-[#201D1D] dark:bg-[#FDFCFC] p-8 sm:p-12 text-center relative overflow-hidden">
+            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjA1KSIgc3Ryb2tlLXdpZHRoPSIwLjUiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-50" />
+            <div className="relative">
+              {/* Counter */}
+              <div className="mb-6">
+                <div className="inline-flex items-center gap-2 border border-[#D97706]/30 bg-[#D97706]/10 px-4 py-2 mb-4">
+                  <Building2 className="h-4 w-4 text-[#D97706]" />
+                  <span className="text-lg sm:text-xl font-bold text-[#D97706]">
+                    <AnimatedCounter target={0} /> établissement
+                    {/* Counter will show 0 during launch phase */}
+                  </span>
+                </div>
+              </div>
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#FDFCFC] dark:text-[#0A0A0A] mb-3">
+                Prêt à réinventer vos emplois du temps ?
+              </h2>
+              <p className="text-xs sm:text-sm text-[#FDFCFC]/70 dark:text-[#0A0A0A]/70 mb-8 max-w-lg mx-auto">
+                Rejoignez les premiers établissements qui font confiance à PlanningPro pour une planification intelligente et sans stress.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
+                <Link href="/register" className="inline-flex items-center justify-center gap-2 text-sm font-bold border border-[#D97706] text-[#D97706] px-6 py-3.5 hover:bg-[#D97706] hover:text-[#201D1D] transition-colors min-h-[44px]">
+                  Essai gratuit 14 jours <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link href="/login" className="inline-flex items-center justify-center gap-2 text-sm text-[#FDFCFC]/70 dark:text-[#0A0A0A]/70 hover:text-[#FDFCFC] dark:hover:text-[#0A0A0A] px-6 py-3.5 transition-colors min-h-[44px]">Se connecter</Link>
+              </div>
+              {/* Trust badges */}
+              <div className="flex flex-wrap items-center justify-center gap-6 pt-6 border-t border-[#FDFCFC]/10 dark:border-[#0A0A0A]/10">
+                <div className="flex items-center gap-2">
+                  <Lock className="h-3.5 w-3.5 text-[#D97706]" />
+                  <span className="text-[10px] text-[#FDFCFC]/60 dark:text-[#0A0A0A]/60">Conforme RGPD</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Timer className="h-3.5 w-3.5 text-[#D97706]" />
+                  <span className="text-[10px] text-[#FDFCFC]/60 dark:text-[#0A0A0A]/60">99.9% uptime</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Headphones className="h-3.5 w-3.5 text-[#D97706]" />
+                  <span className="text-[10px] text-[#FDFCFC]/60 dark:text-[#0A0A0A]/60">Support 24/7</span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </AnimatedSection>
       </section>
 
       {/* Footer */}
@@ -461,7 +737,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0A0A0A]">
       <div className="text-center">
-        <div className="animate-spin h-5 w-5 border-2 border-[#201D1D] dark:border-[#FDFCFC] border-t-transparent mx-auto" />
+        <div className="animate-spin h-5 w-5 border-2 border-[#201D1D] dark:border-[#FDFCFC] border-t-transparent mx-auto" style={{ borderRadius: 0 }} />
         <p className="text-xs text-[#9A9898] mt-2">Redirection...</p>
       </div>
     </div>

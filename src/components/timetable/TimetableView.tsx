@@ -22,23 +22,28 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Sparkles, Printer, AlertTriangle, ZoomIn, ZoomOut, Clock, Download, FileText, Image, Zap, ExternalLink, Pencil, Trash2, Share2, History, RotateCcw, Undo2, Redo2, Plus, Calendar, CalendarSync } from "lucide-react";
+import {
+  Sparkles, Printer, AlertTriangle, ZoomIn, ZoomOut, Clock, Download,
+  Zap, ExternalLink, Pencil, Trash2, Share2, History,
+  RotateCcw, Undo2, Redo2, Plus, Calendar, CalendarSync,
+  Users, UserCheck, Building2, ChevronDown, ChevronUp, X,
+  Loader2, GripVertical, FileSpreadsheet, FileImage, FileDown,
+  Hash, BarChart3, BookOpen, Eye
+} from "lucide-react";
 import { dayNames } from "@/lib/countries";
 import { useAppStore, type TimetableViewMode } from "@/lib/store";
-import { ContextBar } from "@/components/layout/ContextBar";
 import { ConflictPanel } from "./ConflictPanel";
 import { DraggableSlot, DroppableCell, DragOverlayContent } from "./DndSlotComponents";
 import { toast } from "sonner";
 import { useUndoRedo, type UndoEntry } from "@/hooks/useUndoRedo";
 import { getSubjectColor } from "@/lib/subject-colors";
 
-// Generation progress steps
-const GENERATION_STEPS = [
-  { label: "Analyse des contraintes...", duration: 600 },
-  { label: "Attribution des enseignants...", duration: 800 },
-  { label: "Attribution des salles...", duration: 700 },
-  { label: "Optimisation...", duration: 1200 },
-  { label: "Vérification des conflits...", duration: 500 },
+// Generation terminal-style messages
+const GENERATION_MESSAGES = [
+  "⟩ Analyse des contraintes...",
+  "⟩ Vérification des conflits...",
+  "⟩ Optimisation en cours...",
+  "✓ Emploi du temps généré",
 ];
 
 interface TimetableSlotData {
@@ -151,17 +156,20 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
     })
   );
 
-  // Generation progress state (TASK 3)
-  const [genProgressStep, setGenProgressStep] = useState(0);
-  const [genProgressPercent, setGenProgressPercent] = useState(0);
-  const [genProgressLabel, setGenProgressLabel] = useState("");
+  // Generation progress state
+  const [genMessageIndex, setGenMessageIndex] = useState(0);
   const [genResult, setGenResult] = useState<{
     score: number | null;
     unassignedSubjects: string[];
     conflictsCount: number;
   } | null>(null);
+  const [genAbortRef, setGenAbortRef] = useState<AbortController | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [conflictAlertExpanded, setConflictAlertExpanded] = useState(false);
+  const [conflictHighlight, setConflictHighlight] = useState<string[]>([]);
 
-  // Undo/Redo (TASK 2)
+  // Undo/Redo
   const {
     canUndo,
     canRedo,
@@ -233,7 +241,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
 
   // Load timetable based on view mode
   useEffect(() => {
-    if (viewingVersionId) return; // Don't reload when viewing a version
+    if (viewingVersionId) return;
     if (timetableViewMode === "class" && selectedClassId) {
       loadTimetable();
     } else if (timetableViewMode === "teacher" && selectedTeacherId) {
@@ -248,12 +256,115 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
     loadConflicts();
   }, [institutionId]);
 
-  // Clear undo stack when switching classes (TASK 2)
+  // Clear undo stack when switching classes
   useEffect(() => {
     clearStacks();
   }, [selectedClassId]);
 
-  // Keyboard shortcuts for undo/redo (TASK 2)
+  // TASK 2: Undo handler
+  const handleUndo = useCallback(async () => {
+    const entry = undo();
+    if (!entry) return;
+
+    try {
+      if (entry.actionType === "edit") {
+        await fetch("/api/timetables", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slotId: entry.slotId,
+            teacherId: entry.previousValues.teacherId || undefined,
+            roomId: entry.previousValues.roomId || undefined,
+          }),
+        });
+        toast.success("Annulé ✓");
+      } else if (entry.actionType === "delete") {
+        if (entry.deletedSlotData) {
+          await fetch("/api/timetables", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: entry.deletedSlotData.timetableId,
+              slots: [{
+                subjectId: entry.deletedSlotData.subjectId,
+                teacherId: entry.previousValues.teacherId,
+                roomId: entry.previousValues.roomId,
+                dayOfWeek: entry.previousValues.dayOfWeek,
+                startTime: entry.previousValues.startTime,
+                endTime: entry.previousValues.endTime,
+                timeSlotId: entry.deletedSlotData.timeSlotId,
+              }],
+            }),
+          });
+          toast.success("Créneau restauré ✓");
+        }
+      } else if (entry.actionType === "move") {
+        await fetch("/api/timetables", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slotId: entry.slotId,
+            teacherId: entry.previousValues.teacherId || undefined,
+            roomId: entry.previousValues.roomId || undefined,
+            dayOfWeek: entry.previousValues.dayOfWeek,
+            startTime: entry.previousValues.startTime,
+            endTime: entry.previousValues.endTime,
+          }),
+        });
+        toast.success("Annulé ✓");
+      }
+      loadTimetable();
+    } catch {
+      toast.error("Erreur lors de l'annulation");
+    }
+  }, [undo]);
+
+  // TASK 2: Redo handler
+  const handleRedo = useCallback(async () => {
+    const entry = redo();
+    if (!entry) return;
+
+    try {
+      if (entry.actionType === "edit") {
+        await fetch("/api/timetables", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slotId: entry.slotId,
+            teacherId: entry.newValues.teacherId || undefined,
+            roomId: entry.newValues.roomId || undefined,
+          }),
+        });
+        toast.success("Rétabli ✓");
+      } else if (entry.actionType === "delete") {
+        await fetch("/api/timetables", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slotId: entry.slotId }),
+        });
+        toast.success("Suppression rétablie ✓");
+      } else if (entry.actionType === "move") {
+        await fetch("/api/timetables", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slotId: entry.slotId,
+            teacherId: entry.newValues.teacherId || undefined,
+            roomId: entry.newValues.roomId || undefined,
+            dayOfWeek: entry.newValues.dayOfWeek,
+            startTime: entry.newValues.startTime,
+            endTime: entry.newValues.endTime,
+          }),
+        });
+        toast.success("Rétabli ✓");
+      }
+      loadTimetable();
+    } catch {
+      toast.error("Erreur lors du rétablissement");
+    }
+  }, [redo]);
+
+  // FIX: Keyboard shortcuts for undo/redo with proper dependencies
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) {
@@ -268,7 +379,19 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [handleUndo, handleRedo]);
+
+  // Generation message rotation
+  useEffect(() => {
+    if (!generating) return;
+    const interval = setInterval(() => {
+      setGenMessageIndex((prev) => {
+        if (prev < GENERATION_MESSAGES.length - 1) return prev + 1;
+        return prev;
+      });
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [generating]);
 
   const loadTimetable = useCallback(async () => {
     setLoading(true);
@@ -288,7 +411,6 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
       if (res.ok) {
         const data = await res.json();
         setTimetable(data);
-        // Load versions if class view
         if (timetableViewMode === "class" && selectedClassId) {
           loadVersions();
         }
@@ -334,52 +456,25 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
     }
   };
 
-  // TASK 3: Simulated progress steps for generation
-  const simulateGenerationProgress = async (): Promise<void> => {
-    const totalDuration = GENERATION_STEPS.reduce((sum, s) => sum + s.duration, 0);
-    let elapsed = 0;
-
-    for (let i = 0; i < GENERATION_STEPS.length; i++) {
-      setGenProgressStep(i);
-      setGenProgressLabel(GENERATION_STEPS[i].label);
-      const stepDuration = GENERATION_STEPS[i].duration;
-      const startElapsed = elapsed;
-      const endElapsed = elapsed + stepDuration;
-
-      // Animate within this step
-      const animSteps = 10;
-      for (let j = 0; j <= animSteps; j++) {
-        const currentElapsed = startElapsed + (stepDuration * j) / animSteps;
-        const pct = Math.round((currentElapsed / totalDuration) * 100);
-        setGenProgressPercent(pct);
-        await new Promise((r) => setTimeout(r, stepDuration / animSteps));
-      }
-      elapsed = endElapsed;
-    }
-    setGenProgressPercent(100);
-  };
-
   const handleGenerate = async () => {
     if (!selectedClassId) return;
     setGenerating(true);
     setGenResult(null);
-    setGenProgressStep(0);
-    setGenProgressPercent(0);
-    setGenProgressLabel(GENERATION_STEPS[0].label);
+    setGenMessageIndex(0);
 
-    // Start simulated progress and API call in parallel
-    const progressPromise = simulateGenerationProgress();
+    const abortController = new AbortController();
+    setGenAbortRef(abortController);
 
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ institutionId, classId: selectedClassId }),
+        signal: abortController.signal,
       });
       const data = await res.json();
 
-      // Wait for progress animation to complete
-      await progressPromise;
+      if (abortController.signal.aborted) return;
 
       if (res.ok) {
         const score = data.score ?? null;
@@ -387,12 +482,12 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
         const conflictsCount = (data.teacherConflicts?.length || 0) + (data.roomConflicts?.length || 0);
 
         setGenResult({ score, unassignedSubjects, conflictsCount });
+        setGenMessageIndex(GENERATION_MESSAGES.length - 1);
 
         toast.success(`Emploi du temps généré ✓ (score: ${score ?? "N/A"})`);
         setTimetable(data);
         loadConflicts();
         loadVersions();
-        // Clear undo stack on regeneration (TASK 2)
         clearStacks();
         addNotification({
           type: "generation_complete",
@@ -403,12 +498,25 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
         setGenResult(null);
         toast.error(data.error || "Erreur lors de la génération");
       }
-    } catch {
-      await progressPromise;
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        toast.info("Génération annulée");
+        return;
+      }
       setGenResult(null);
       toast.error("Erreur lors de la génération");
     } finally {
       setGenerating(false);
+      setGenAbortRef(null);
+    }
+  };
+
+  const handleCancelGeneration = () => {
+    if (genAbortRef) {
+      genAbortRef.abort();
+      setGenerating(false);
+      setGenAbortRef(null);
+      setGenMessageIndex(0);
     }
   };
 
@@ -419,7 +527,6 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
     }
     setGeneratingAll(true);
     setGenerateProgress({ current: 0, total: classes.length });
-    // Clear undo stack on regeneration (TASK 2)
     clearStacks();
     let successCount = 0;
     let errorCount = 0;
@@ -468,10 +575,8 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
     if (!timetable) return;
 
     const csvRows: string[] = [];
-    // Header
     csvRows.push(["Horaire", ...days.map((d) => dayNames[d] || `Jour ${d}`)].join(";"));
 
-    // Data rows
     for (const time of allTimes) {
       const [start, end] = time.split("-");
       const row = [`${start} - ${end}`];
@@ -505,6 +610,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
   // PNG Export
   const handleExportPNG = async () => {
     if (!timetableRef.current) return;
+    setExporting(true);
     try {
       const html2canvasModule = await import("html2canvas").catch(() => null);
       const tableEl = timetableRef.current.querySelector("table");
@@ -525,17 +631,22 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
       }
     } catch {
       toast.info("Utilisez Imprimer > PDF pour exporter en image");
+    } finally {
+      setExporting(false);
+      setExportOpen(false);
     }
   };
 
   // PDF Export
   const handleExportPDF = () => {
+    setExportOpen(false);
     window.print();
   };
 
   // iCal Export
   const handleExportICal = async () => {
     if (!timetable) return;
+    setExporting(true);
     try {
       const res = await fetch(`/api/ical?timetableId=${timetable.id}`);
       if (res.ok) {
@@ -554,6 +665,9 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
       }
     } catch {
       toast.error("Erreur lors de l'export iCal");
+    } finally {
+      setExporting(false);
+      setExportOpen(false);
     }
   };
 
@@ -591,7 +705,6 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
 
   const handleSaveSlotEdit = async () => {
     if (!selectedSlot) return;
-    // Push to undo stack before saving (TASK 2)
     const undoEntry: UndoEntry = {
       slotId: selectedSlot.id,
       actionType: "edit",
@@ -638,7 +751,6 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
   // Slot deletion
   const handleDeleteSlot = async () => {
     if (!selectedSlot) return;
-    // Push to undo stack before deleting (TASK 2)
     const undoEntry: UndoEntry = {
       slotId: selectedSlot.id,
       actionType: "delete",
@@ -684,8 +796,8 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
 
   // Open add slot dialog for an empty cell
   const handleOpenAddSlot = (dayOfWeek: number, startTime: string, endTime: string) => {
-    if (viewingVersionId) return; // Don't allow on historical versions
-    if (timetableViewMode !== "class") return; // Only allow in class view
+    if (viewingVersionId) return;
+    if (timetableViewMode !== "class") return;
     setAddSlotData({
       dayOfWeek,
       startTime,
@@ -721,8 +833,8 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
       });
       if (res.ok) {
         const result = await res.json();
-        const conflicts = result.conflicts as string[];
-        if (conflicts && conflicts.length > 0) {
+        const slotConflicts = result.conflicts as string[];
+        if (slotConflicts && slotConflicts.length > 0) {
           toast.success("Créneau ajouté (conflit détecté) ⚠");
         } else {
           toast.success("Créneau ajouté ✓");
@@ -737,7 +849,6 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
     }
   };
 
-  // TASK 1: Fixed handleViewVersion - fetch timetable by ID directly
   const handleViewVersion = async (versionId: string) => {
     setViewingVersionId(versionId);
     setLoading(true);
@@ -764,10 +875,8 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
     }
   };
 
-  // TASK 1: Fixed handleRestoreVersion - properly activate version and deactivate current
   const handleRestoreVersion = async (versionId: string) => {
     try {
-      // First, deactivate ALL active timetables for this class
       if (selectedClassId) {
         const allRes = await fetch(`/api/timetables?institutionId=${institutionId}`);
         if (allRes.ok) {
@@ -776,7 +885,6 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
             (tt: { classId: string; isActive: boolean; id: string }) =>
               tt.classId === selectedClassId && tt.isActive
           );
-          // Deactivate all currently active timetables for this class
           for (const tt of classTimetables) {
             if (tt.id !== versionId) {
               await fetch("/api/timetables", {
@@ -789,7 +897,6 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
         }
       }
 
-      // Now activate the target version
       const res = await fetch("/api/timetables", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -809,130 +916,18 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
     }
   };
 
-  // TASK 2: Undo handler
-  const handleUndo = useCallback(async () => {
-    const entry = undo();
-    if (!entry) return;
-
-    try {
-      if (entry.actionType === "edit") {
-        // Restore previous values
-        await fetch("/api/timetables", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            slotId: entry.slotId,
-            teacherId: entry.previousValues.teacherId || undefined,
-            roomId: entry.previousValues.roomId || undefined,
-          }),
-        });
-        toast.success("Annulé ✓");
-      } else if (entry.actionType === "delete") {
-        // Recreate the deleted slot
-        if (entry.deletedSlotData) {
-          await fetch("/api/timetables", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              id: entry.deletedSlotData.timetableId,
-              slots: [{
-                subjectId: entry.deletedSlotData.subjectId,
-                teacherId: entry.previousValues.teacherId,
-                roomId: entry.previousValues.roomId,
-                dayOfWeek: entry.previousValues.dayOfWeek,
-                startTime: entry.previousValues.startTime,
-                endTime: entry.previousValues.endTime,
-                timeSlotId: entry.deletedSlotData.timeSlotId,
-              }],
-            }),
-          });
-          toast.success("Créneau restauré ✓");
-        }
-      } else if (entry.actionType === "move") {
-        // Restore previous position (including dayOfWeek/startTime/endTime)
-        await fetch("/api/timetables", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            slotId: entry.slotId,
-            teacherId: entry.previousValues.teacherId || undefined,
-            roomId: entry.previousValues.roomId || undefined,
-            dayOfWeek: entry.previousValues.dayOfWeek,
-            startTime: entry.previousValues.startTime,
-            endTime: entry.previousValues.endTime,
-          }),
-        });
-        toast.success("Annulé ✓");
-      }
-      loadTimetable();
-    } catch {
-      toast.error("Erreur lors de l'annulation");
-    }
-  }, [undo]);
-
-  // TASK 2: Redo handler
-  const handleRedo = useCallback(async () => {
-    const entry = redo();
-    if (!entry) return;
-
-    try {
-      if (entry.actionType === "edit") {
-        // Re-apply the edit
-        await fetch("/api/timetables", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            slotId: entry.slotId,
-            teacherId: entry.newValues.teacherId || undefined,
-            roomId: entry.newValues.roomId || undefined,
-          }),
-        });
-        toast.success("Rétabli ✓");
-      } else if (entry.actionType === "delete") {
-        // Re-delete the slot
-        await fetch("/api/timetables", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slotId: entry.slotId }),
-        });
-        toast.success("Suppression rétablie ✓");
-      } else if (entry.actionType === "move") {
-        // Re-apply the move (including dayOfWeek/startTime/endTime)
-        await fetch("/api/timetables", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            slotId: entry.slotId,
-            teacherId: entry.newValues.teacherId || undefined,
-            roomId: entry.newValues.roomId || undefined,
-            dayOfWeek: entry.newValues.dayOfWeek,
-            startTime: entry.newValues.startTime,
-            endTime: entry.newValues.endTime,
-          }),
-        });
-        toast.success("Rétabli ✓");
-      }
-      loadTimetable();
-    } catch {
-      toast.error("Erreur lors du rétablissement");
-    }
-  }, [redo]);
-
   // Group slots by day (all slots for grid structure)
   const allSlotsByDay: Record<number, TimetableSlotData[]> = {};
-  // Group slots by day - filter by semester if selected
   const slotsByDay: Record<number, TimetableSlotData[]> = {};
   if (timetable?.slots) {
     for (const slot of timetable.slots) {
-      // Always build full grid structure
       if (!allSlotsByDay[slot.dayOfWeek]) allSlotsByDay[slot.dayOfWeek] = [];
       allSlotsByDay[slot.dayOfWeek].push(slot);
 
-      // Filter by semester if currentSemester is set
       if (currentSemester && slot.subject) {
         const subjectInfo = subjects.find(s => s.id === slot.subject?.id);
         if (subjectInfo?.semester && subjectInfo.semester !== currentSemester) {
-          continue; // Skip this slot - wrong semester
+          continue;
         }
       }
       if (!slotsByDay[slot.dayOfWeek]) slotsByDay[slot.dayOfWeek] = [];
@@ -940,16 +935,12 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
     }
   }
 
-  // Get unique days and time slots - use full grid structure (unfiltered) for days/times
   const days = Object.keys(allSlotsByDay)
     .map(Number)
     .sort((a, b) => a - b);
   const allTimes = timetable?.slots
     ? [...new Set(timetable.slots.map((s) => `${s.startTime}-${s.endTime}`))].sort()
     : [];
-
-  // Color assignment for subjects - now uses getSubjectColor from subject-colors.ts
-  // No longer need subjectColorMap; colors are derived deterministically from subject name
 
   // Calculate subject hours (from filtered slots)
   const subjectHours = new Map<string, { name: string; hours: number }>();
@@ -974,6 +965,40 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
 
   const isHistoricalVersion = viewingVersionId !== null && timetable?.id === viewingVersionId;
 
+  // Quick Stats computations
+  const totalSlots = timetable?.slots?.length || 0;
+  const totalConflicts = (conflicts?.teacherConflicts?.length || 0) + (conflicts?.roomConflicts?.length || 0);
+  const totalGridCells = days.length * allTimes.length;
+  const coveragePercent = totalGridCells > 0 ? Math.round((totalSlots / totalGridCells) * 100) : 0;
+  const uniqueSubjects = subjectHours.size;
+
+  // Current time indicator
+  const getCurrentTimePosition = useCallback(() => {
+    const now = new Date();
+    const currentDay = now.getDay() === 0 ? 7 : now.getDay();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const timeStr = `${String(currentHour).padStart(2, "0")}:${String(currentMinute).padStart(2, "0")}`;
+
+    // Find which time slot row we're in
+    for (let i = 0; i < allTimes.length; i++) {
+      const [start, end] = allTimes[i].split("-");
+      if (timeStr >= start && timeStr < end) {
+        // Calculate position within the slot
+        const [startH, startM] = start.split(":").map(Number);
+        const [endH, endM] = end.split(":").map(Number);
+        const startMin = startH * 60 + startM;
+        const endMin = endH * 60 + endM;
+        const nowMin = currentHour * 60 + currentMinute;
+        const pct = (nowMin - startMin) / (endMin - startMin);
+        return { rowIndex: i, dayIndex: days.indexOf(currentDay), pct, isToday: days.includes(currentDay) };
+      }
+    }
+    return null;
+  }, [allTimes, days]);
+
+  const currentTimePos = getCurrentTimePosition();
+
   // DnD handlers
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
@@ -991,7 +1016,6 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
     setActiveSlotData(null);
 
     if (!over || !active) return;
-    // Only allow drops on empty cells (droppable targets)
     const slotId = active.id as string;
     const overData = over.data.current;
     if (!overData) return;
@@ -1000,16 +1024,13 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
     const sourceSlot = timetable?.slots.find((s) => s.id === slotId);
     if (!sourceSlot) return;
 
-    // Don't do anything if dropped on same position
     if (sourceSlot.dayOfWeek === targetDay && sourceSlot.startTime === targetStart && sourceSlot.endTime === targetEnd) return;
 
-    // Don't allow DnD on historical versions
     if (viewingVersionId) {
       toast.error("Impossible de déplacer un créneau en version historique");
       return;
     }
 
-    // Push to undo stack before moving
     const undoEntry: UndoEntry = {
       slotId,
       actionType: "move",
@@ -1043,12 +1064,11 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
 
       if (res.ok) {
         const result = await res.json();
-        const conflicts = result.conflicts as string[];
+        const dragConflicts = result.conflicts as string[];
 
-        if (conflicts && conflicts.length > 0) {
-          // Store the pending move and show conflict dialog
+        if (dragConflicts && dragConflicts.length > 0) {
           setPendingMove({ slotId, dayOfWeek: targetDay, startTime: targetStart, endTime: targetEnd });
-          setConflictMessages(conflicts);
+          setConflictMessages(dragConflicts);
           setConflictDialogOpen(true);
         } else {
           pushUndo(undoEntry);
@@ -1064,7 +1084,6 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
   };
 
   const handleConflictConfirm = () => {
-    // User confirms despite conflict - the move is already done, just close dialog
     setConflictDialogOpen(false);
     setConflictMessages([]);
     setPendingMove(null);
@@ -1094,7 +1113,6 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
   };
 
   const handleConflictCancel = async () => {
-    // Undo the move - revert the slot to its original position
     if (pendingMove && activeSlotData) {
       try {
         await fetch("/api/timetables", {
@@ -1122,13 +1140,26 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
   const dndEnabled = !viewingVersionId;
 
   const viewModeTabs = [
-    { id: "class", label: "Par classe" },
-    { id: "teacher", label: "Par enseignant" },
-    { id: "room", label: "Par salle" },
+    { id: "class" as TimetableViewMode, label: "Par classe", icon: Users, count: classes.length, countLabel: `${classes.length} classe${classes.length !== 1 ? "s" : ""}` },
+    { id: "teacher" as TimetableViewMode, label: "Par enseignant", icon: UserCheck, count: teachers.length, countLabel: `${teachers.length} enseignant${teachers.length !== 1 ? "s" : ""}` },
+    { id: "room" as TimetableViewMode, label: "Par salle", icon: Building2, count: rooms.length, countLabel: `${rooms.length} salle${rooms.length !== 1 ? "s" : ""}` },
   ];
 
+  // Handle conflict resolve
+  const handleResolveConflict = (conflictType: "teacher" | "room", conflictDay: number, conflictTime: string) => {
+    // Highlight slots that are in this conflict
+    const matchingSlotIds: string[] = [];
+    timetable?.slots?.forEach(slot => {
+      if (slot.dayOfWeek === conflictDay && `${slot.startTime}-${slot.endTime}` === conflictTime) {
+        matchingSlotIds.push(slot.id);
+      }
+    });
+    setConflictHighlight(matchingSlotIds);
+    setTimeout(() => setConflictHighlight([]), 5000);
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Print title - hidden on screen, visible in print */}
       <div className="hidden print-title">
         <h1>{timetable?.name || "Emploi du temps"}</h1>
@@ -1138,17 +1169,18 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
         </p>
       </div>
 
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
         <div>
-          <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Emploi du temps</h1>
-          <p className="text-xs text-[#9A9898] mt-1">
+          <h1 className="text-2xl font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC]">Emploi du temps</h1>
+          <p className="text-xs text-[#9A9898] mt-1 font-mono">
             Consultez et générez les emplois du temps
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Semester filter */}
           <Select value={currentSemester || "__all__"} onValueChange={(v) => setSemester(v === "__all__" ? null : v)}>
-            <SelectTrigger className="w-[120px] text-xs">
+            <SelectTrigger className="w-[120px] text-xs font-mono rounded-none">
               <Calendar className="h-3 w-3 mr-1 text-[#9A9898]" />
               <SelectValue placeholder="Semestre" />
             </SelectTrigger>
@@ -1163,7 +1195,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
           </Select>
           {timetableViewMode === "class" && (
             <Select value={selectedClassId || ""} onValueChange={(v) => setSelectedClassId(v)}>
-              <SelectTrigger className="w-[180px] text-xs">
+              <SelectTrigger className="w-[180px] text-xs font-mono rounded-none">
                 <SelectValue placeholder="Choisir une classe" />
               </SelectTrigger>
               <SelectContent>
@@ -1175,7 +1207,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
           )}
           {timetableViewMode === "teacher" && (
             <Select value={selectedTeacherId || ""} onValueChange={(v) => setSelectedTeacherId(v)}>
-              <SelectTrigger className="w-[200px] text-xs">
+              <SelectTrigger className="w-[200px] text-xs font-mono rounded-none">
                 <SelectValue placeholder="Choisir un enseignant" />
               </SelectTrigger>
               <SelectContent>
@@ -1187,7 +1219,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
           )}
           {timetableViewMode === "room" && (
             <Select value={selectedRoomId || ""} onValueChange={(v) => setSelectedRoomId(v)}>
-              <SelectTrigger className="w-[180px] text-xs">
+              <SelectTrigger className="w-[180px] text-xs font-mono rounded-none">
                 <SelectValue placeholder="Choisir une salle" />
               </SelectTrigger>
               <SelectContent>
@@ -1202,7 +1234,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
               <Button
                 onClick={handleGenerate}
                 disabled={generating || !selectedClassId}
-                className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+                className="text-xs font-mono bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0 rounded-none"
               >
                 <Sparkles className="h-3 w-3 mr-1" />
                 {generating ? "Génération..." : "Générer"}
@@ -1210,68 +1242,88 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
               <Button
                 onClick={handleGenerateAll}
                 disabled={generatingAll}
-                variant="ghost"
-                className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] no-print"
+                variant="outline"
+                className="text-xs font-mono border-[#E5E5E5] dark:border-[#2A2A2A] text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] rounded-none no-print"
               >
-                <Zap className="h-3 w-3 mr-1" />
+                <Zap className="h-3 w-3 mr-1 text-[#D97706]" />
                 {generatingAll ? `${generateProgress.current}/${generateProgress.total}` : "Générer tout"}
               </Button>
             </>
           )}
+          {/* Export Menu */}
           {timetable && (
-            <div className="flex items-center gap-1 no-print">
+            <div className="relative">
               <Button
-                variant="ghost"
-                onClick={handleExportCSV}
-                className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
-                title="Exporter CSV"
-              >
-                <FileText className="h-3 w-3 mr-1" />
-                CSV
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={handleExportPNG}
-                className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
-                title="Exporter PNG"
+                variant="outline"
+                onClick={() => setExportOpen(!exportOpen)}
+                className="text-xs font-mono border-[#E5E5E5] dark:border-[#2A2A2A] text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] rounded-none"
               >
                 <Download className="h-3 w-3 mr-1" />
-                PNG
+                Exporter
+                <ChevronDown className="h-3 w-3 ml-1" />
               </Button>
-              <Button
-                variant="ghost"
-                onClick={handleExportPDF}
-                className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
-                title="Exporter PDF"
-              >
-                <Image className="h-3 w-3 mr-1" alt="" />
-                PDF
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={handleExportICal}
-                className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
-                title="Exporter iCal"
-              >
-                <CalendarSync className="h-3 w-3 mr-1" />
-                iCal
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={handleShare}
-                className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
-                title="Partager"
-              >
-                <Share2 className="h-3 w-3 mr-1" />
-                Partager
-              </Button>
+              {exportOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-[#FDFCFC] dark:bg-[#1A1A1A] border border-[#E5E5E5] dark:border-[#2A2A2A] shadow-md w-52" style={{ borderRadius: 0 }}>
+                    {/* Formats section */}
+                    <div className="px-3 py-2 border-b border-[#E5E5E5] dark:border-[#2A2A2A]">
+                      <p className="text-[9px] text-[#9A9898] uppercase font-bold tracking-wider font-mono">Formats</p>
+                    </div>
+                    <button
+                      onClick={() => { handleExportCSV(); setExportOpen(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-mono text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#2A2A2A] transition-colors"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-[#9A9898]" />
+                      CSV
+                    </button>
+                    <button
+                      onClick={handleExportPNG}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-mono text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#2A2A2A] transition-colors"
+                    >
+                      <FileImage className="h-3.5 w-3.5 text-[#9A9898]" />
+                      PNG
+                      {exporting && <Loader2 className="h-3 w-3 animate-spin ml-auto" />}
+                    </button>
+                    <button
+                      onClick={handleExportPDF}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-mono text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#2A2A2A] transition-colors"
+                    >
+                      <FileDown className="h-3.5 w-3.5 text-[#9A9898]" />
+                      PDF
+                    </button>
+                    {/* Calendrier section */}
+                    <div className="px-3 py-2 border-b border-t border-[#E5E5E5] dark:border-[#2A2A2A]">
+                      <p className="text-[9px] text-[#9A9898] uppercase font-bold tracking-wider font-mono">Calendrier</p>
+                    </div>
+                    <button
+                      onClick={handleExportICal}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-mono text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#2A2A2A] transition-colors"
+                    >
+                      <CalendarSync className="h-3.5 w-3.5 text-[#9A9898]" />
+                      iCal
+                      {exporting && <Loader2 className="h-3 w-3 animate-spin ml-auto" />}
+                    </button>
+                    {/* Share */}
+                    <div className="border-t border-[#E5E5E5] dark:border-[#2A2A2A]">
+                      <button
+                        onClick={() => { handleShare(); setExportOpen(false); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-mono text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#2A2A2A] transition-colors"
+                      >
+                        <Share2 className="h-3.5 w-3.5 text-[#9A9898]" />
+                        Partager
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
           <Button
             variant="ghost"
             onClick={handlePrint}
             disabled={!timetable}
-            className="text-xs text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] no-print"
+            className="text-xs font-mono text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] rounded-none no-print"
           >
             <Printer className="h-3 w-3 mr-1" />
             Imprimer
@@ -1279,75 +1331,83 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
         </div>
       </div>
 
-      {/* TASK 3: Generation progress dialog */}
+      {/* Generation overlay */}
       {generating && (
-        <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4 no-print">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="animate-spin h-4 w-4 border-2 border-[#201D1D] dark:border-[#FDFCFC] border-t-transparent" />
-            <div className="flex-1">
-              <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold block">
-                {genProgressLabel}
-              </span>
-              <span className="text-[10px] text-[#9A9898]">
-                Étape {genProgressStep + 1}/{GENERATION_STEPS.length}
+        <div className="border border-[#201D1D] dark:border-[#FDFCFC] p-6 no-print bg-[#FDFCFC]/95 dark:bg-[#1A1A1A]/95 relative overflow-hidden">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-[#D97706]" />
+              <span className="text-sm font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC]">
+                Génération en cours...
               </span>
             </div>
-            <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold font-mono">
-              {genProgressPercent}%
-            </span>
+            <Button
+              variant="ghost"
+              onClick={handleCancelGeneration}
+              className="text-xs font-mono text-[#9A9898] hover:text-[#DC2626] rounded-none"
+            >
+              <X className="h-3 w-3 mr-1" />
+              Annuler
+            </Button>
           </div>
-          <div className="h-1.5 bg-[#F8F7F7] dark:bg-[#1A1A1A] w-full">
-            <div
-              className="h-full bg-[#201D1D] dark:bg-[#FDFCFC] transition-all duration-300"
-              style={{ width: `${genProgressPercent}%` }}
-            />
-          </div>
-          <div className="flex gap-1 mt-3">
-            {GENERATION_STEPS.map((step, i) => (
+          <div className="space-y-2 font-mono">
+            {GENERATION_MESSAGES.map((msg, i) => (
               <div
                 key={i}
-                className={`flex-1 h-1 transition-colors duration-200 ${
-                  i < genProgressStep
-                    ? "bg-[#201D1D] dark:bg-[#FDFCFC]"
-                    : i === genProgressStep
-                    ? "bg-[#201D1D]/50 dark:bg-[#FDFCFC]/50"
-                    : "bg-[#E5E5E5] dark:bg-[#2A2A2A]"
+                className={`text-xs transition-all duration-500 ${
+                  i <= genMessageIndex
+                    ? i === GENERATION_MESSAGES.length - 1 && genMessageIndex === GENERATION_MESSAGES.length - 1
+                      ? "text-[#D97706] font-bold"
+                      : "text-[#201D1D] dark:text-[#FDFCFC]"
+                    : "text-[#9A9898]/30"
                 }`}
-              />
+              >
+                {i <= genMessageIndex ? msg : msg.substring(0, 3) + "···"}
+                {i === genMessageIndex && i < GENERATION_MESSAGES.length - 1 && (
+                  <span className="animate-pulse ml-1">▌</span>
+                )}
+              </div>
             ))}
+          </div>
+          {/* Progress bar */}
+          <div className="mt-4 h-1 bg-[#E5E5E5] dark:bg-[#2A2A2A] w-full">
+            <div
+              className="h-full bg-[#D97706] transition-all duration-700"
+              style={{ width: `${((genMessageIndex + 1) / GENERATION_MESSAGES.length) * 100}%` }}
+            />
           </div>
         </div>
       )}
 
-      {/* TASK 3: Generation result summary */}
+      {/* Generation result summary */}
       {genResult && !generating && (
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4 no-print">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+            <p className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC]">
               Résultat de la génération
             </p>
             <button
               onClick={() => setGenResult(null)}
-              className="text-[10px] text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC]"
+              className="text-[10px] text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] font-mono"
             >
-              Fermer
+              Fermer ✕
             </button>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-[#9A9898]">Score:</span>
+              <span className="text-[10px] text-[#9A9898] font-mono">Score:</span>
               <span className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] font-mono">
                 {genResult.score ?? "N/A"}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-[#9A9898]">Conflits:</span>
+              <span className="text-[10px] text-[#9A9898] font-mono">Conflits:</span>
               <span className={`text-xs font-bold font-mono ${genResult.conflictsCount > 0 ? "text-[#DC2626]" : "text-emerald-600"}`}>
                 {genResult.conflictsCount}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-[#9A9898]">Créneaux:</span>
+              <span className="text-[10px] text-[#9A9898] font-mono">Créneaux:</span>
               <span className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] font-mono">
                 {timetable?.slots?.length || 0}
               </span>
@@ -1357,13 +1417,13 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
             <div className="mt-3 border border-[#D97706]/30 bg-[#D97706]/5 dark:bg-[#D97706]/10 p-3">
               <div className="flex items-center gap-2 mb-1">
                 <AlertTriangle className="h-3 w-3 text-[#D97706]" />
-                <span className="text-[10px] text-[#D97706] font-bold">
+                <span className="text-[10px] text-[#D97706] font-bold font-mono">
                   Matières non attribuées ({genResult.unassignedSubjects.length})
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5 mt-1">
                 {genResult.unassignedSubjects.map((name, i) => (
-                  <span key={i} className="text-[10px] bg-[#D97706]/10 text-[#D97706] px-1.5 py-0.5 border border-[#D97706]/20">
+                  <span key={i} className="text-[10px] font-mono bg-[#D97706]/10 text-[#D97706] px-1.5 py-0.5 border border-[#D97706]/20" style={{ borderRadius: 0 }}>
                     {name}
                   </span>
                 ))}
@@ -1377,8 +1437,8 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
       {generatingAll && (
         <div className="border border-[#D97706]/30 bg-[#D97706]/5 dark:bg-[#D97706]/10 p-3">
           <div className="flex items-center gap-3">
-            <div className="animate-spin h-4 w-4 border-2 border-[#D97706] border-t-transparent" />
-            <span className="text-xs text-[#D97706] font-bold">
+            <Loader2 className="h-4 w-4 animate-spin text-[#D97706]" />
+            <span className="text-xs text-[#D97706] font-bold font-mono">
               Génération en cours... {generateProgress.current}/{generateProgress.total}
             </span>
           </div>
@@ -1391,25 +1451,118 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
         </div>
       )}
 
-      {/* View mode tabs */}
-      <ContextBar
-        items={viewModeTabs}
-        activeId={timetableViewMode}
-        onSelect={(id) => setTimetableViewMode(id as TimetableViewMode)}
-      />
+      {/* Improved View Mode Switcher */}
+      <div className="border-b border-[#E5E5E5] dark:border-[#2A2A2A] bg-[#FDFCFC] dark:bg-[#0A0A0A] no-print">
+        <div className="flex items-center gap-0">
+          {viewModeTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = timetableViewMode === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setTimetableViewMode(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2.5 text-xs font-mono border-b-2 transition-all duration-150 ${
+                  isActive
+                    ? "border-[#201D1D] dark:border-[#FDFCFC] text-[#201D1D] dark:text-[#FDFCFC] font-bold bg-[#F8F7F7]/50 dark:bg-[#1A1A1A]/50"
+                    : "border-transparent text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7]/30 dark:hover:bg-[#1A1A1A]/30"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {tab.label}
+                <span className={`text-[9px] px-1.5 py-0.5 font-mono ${
+                  isActive
+                    ? "bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A]"
+                    : "bg-[#E5E5E5] dark:bg-[#2A2A2A] text-[#9A9898]"
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Conflict Alert Bar */}
+      {totalConflicts > 0 && !generating && (
+        <div className="border border-[#DC2626]/30 bg-[#DC2626]/5 dark:bg-[#DC2626]/10 no-print">
+          <button
+            onClick={() => setConflictAlertExpanded(!conflictAlertExpanded)}
+            className="w-full flex items-center justify-between px-4 py-3"
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-[#DC2626]" />
+              <span className="text-xs font-bold font-mono text-[#DC2626]">
+                {totalConflicts} conflit{totalConflicts !== 1 ? "s" : ""} détecté{totalConflicts !== 1 ? "s" : ""}
+              </span>
+              <span className="text-[10px] font-mono text-[#DC2626]/70">
+                — Cliquez pour {conflictAlertExpanded ? "masquer" : "voir les détails"}
+              </span>
+            </div>
+            {conflictAlertExpanded ? (
+              <ChevronUp className="h-3.5 w-3.5 text-[#DC2626]" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5 text-[#DC2626]" />
+            )}
+          </button>
+          {conflictAlertExpanded && (
+            <div className="px-4 pb-3 space-y-2 max-h-64 overflow-y-auto">
+              {conflicts?.teacherConflicts.map((c, i) => (
+                <div key={`tc-${i}`} className="flex items-start justify-between gap-2 p-2 bg-[#FDFCFC]/50 dark:bg-[#0A0A0A]/50 border-l-2 border-l-[#DC2626]">
+                  <div className="text-xs font-mono">
+                    <div className="flex items-center gap-1.5">
+                      <UserCheck className="h-3 w-3 text-[#DC2626]" />
+                      <span className="font-bold text-[#201D1D] dark:text-[#FDFCFC]">{c.teacherName}</span>
+                    </div>
+                    <p className="text-[#9A9898] mt-0.5">
+                      {dayNames[c.dayOfWeek]} {c.time} — {c.classes.join(" vs ")}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleResolveConflict("teacher", c.dayOfWeek, c.time)}
+                    className="text-[10px] font-mono font-bold text-[#D97706] hover:text-[#D97706] px-2 py-1 border border-[#D97706]/30 hover:bg-[#D97706]/5 whitespace-nowrap"
+                    style={{ borderRadius: 0 }}
+                  >
+                    Résoudre
+                  </button>
+                </div>
+              ))}
+              {conflicts?.roomConflicts.map((c, i) => (
+                <div key={`rc-${i}`} className="flex items-start justify-between gap-2 p-2 bg-[#FDFCFC]/50 dark:bg-[#0A0A0A]/50 border-l-2 border-l-[#D97706]">
+                  <div className="text-xs font-mono">
+                    <div className="flex items-center gap-1.5">
+                      <Building2 className="h-3 w-3 text-[#D97706]" />
+                      <span className="font-bold text-[#201D1D] dark:text-[#FDFCFC]">{c.roomName}</span>
+                    </div>
+                    <p className="text-[#9A9898] mt-0.5">
+                      {dayNames[c.dayOfWeek]} {c.time} — {c.classes.join(" vs ")}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleResolveConflict("room", c.dayOfWeek, c.time)}
+                    className="text-[10px] font-mono font-bold text-[#D97706] hover:text-[#D97706] px-2 py-1 border border-[#D97706]/30 hover:bg-[#D97706]/5 whitespace-nowrap"
+                    style={{ borderRadius: 0 }}
+                  >
+                    Résoudre
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Historical version notice */}
       {viewingVersionId && (
         <div className="border border-[#D97706]/30 bg-[#D97706]/5 dark:bg-[#D97706]/10 p-3 flex items-center justify-between no-print">
           <div className="flex items-center gap-2">
             <History className="h-3.5 w-3.5 text-[#D97706]" />
-            <span className="text-xs text-[#D97706] font-bold">Version historique (lecture seule)</span>
+            <span className="text-xs text-[#D97706] font-bold font-mono">Version historique (lecture seule)</span>
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               onClick={() => handleRestoreVersion(viewingVersionId)}
-              className="text-xs text-[#D97706] hover:text-[#D97706]"
+              className="text-xs text-[#D97706] hover:text-[#D97706] font-mono rounded-none"
             >
               <RotateCcw className="h-3 w-3 mr-1" />
               Restaurer cette version
@@ -1417,7 +1570,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
             <Button
               variant="ghost"
               onClick={() => { setViewingVersionId(null); loadTimetable(); }}
-              className="text-xs text-[#646262]"
+              className="text-xs text-[#646262] font-mono rounded-none"
             >
               Retour à la version active
             </Button>
@@ -1428,7 +1581,11 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
       {/* Content */}
       {classes.length === 0 && timetableViewMode === "class" ? (
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-16 text-center">
-          <p className="text-xs text-[#9A9898]">Aucune classe configurée. Créez d&apos;abord des classes.</p>
+          <div className="flex flex-col items-center gap-3">
+            <Users className="h-10 w-10 text-[#9A9898]" />
+            <p className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold font-mono">Aucune classe configurée</p>
+            <p className="text-xs text-[#9A9898] font-mono">Créez d&apos;abord des classes pour commencer.</p>
+          </div>
         </div>
       ) : loading ? (
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4">
@@ -1440,73 +1597,114 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
         </div>
       ) : !timetable ? (
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-16 text-center">
-          <AlertTriangle className="h-8 w-8 text-[#D97706] mx-auto mb-3" />
-          <p className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold">Aucun emploi du temps</p>
-          <p className="text-xs text-[#9A9898] mt-1">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-16 h-16 border-2 border-dashed border-[#E5E5E5] dark:border-[#2A2A2A] flex items-center justify-center">
+              <Calendar className="h-8 w-8 text-[#9A9898]" />
+            </div>
+            <p className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold font-mono">Aucun emploi du temps</p>
+          <p className="text-xs text-[#9A9898] font-mono">
             Cliquez sur &quot;Générer&quot; pour créer automatiquement l&apos;emploi du temps
           </p>
+          {timetableViewMode === "class" && selectedClassId && (
+            <Button
+              onClick={handleGenerate}
+              className="mt-2 text-xs font-mono bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0 rounded-none"
+            >
+              <Sparkles className="h-3 w-3 mr-1" />
+              Générer maintenant
+            </Button>
+          )}
+          </div>
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Timetable title + zoom controls + undo/redo */}
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
-              {timetable.name} — {timetable.class.name}
-              {timetable.version > 1 && (
-                <span className="text-[#9A9898] font-normal ml-2">v{timetable.version}</span>
-              )}
-            </p>
-            <div className="flex items-center gap-1 no-print">
-              {/* TASK 2: Undo/Redo buttons */}
-              {!viewingVersionId && (
-                <>
-                  <button
-                    onClick={handleUndo}
-                    disabled={!canUndo}
-                    className={`p-1.5 transition-colors relative ${
-                      canUndo
-                        ? "text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]"
-                        : "text-[#E5E5E5] dark:text-[#2A2A2A] cursor-not-allowed"
-                    }`}
-                    title="Annuler (Ctrl+Z)"
-                  >
-                    <Undo2 className="h-3.5 w-3.5" />
-                    {undoCount > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 text-[7px] bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-1 py-0 font-bold leading-none">
-                        {undoCount}
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    onClick={handleRedo}
-                    disabled={!canRedo}
-                    className={`p-1.5 transition-colors ${
-                      canRedo
-                        ? "text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]"
-                        : "text-[#E5E5E5] dark:text-[#2A2A2A] cursor-not-allowed"
-                    }`}
-                    title="Rétablir (Ctrl+Shift+Z)"
-                  >
-                    <Redo2 className="h-3.5 w-3.5" />
-                  </button>
-                  <div className="w-px h-4 bg-[#E5E5E5] dark:bg-[#2A2A2A] mx-0.5" />
-                </>
-              )}
-              <button
-                onClick={() => setZoom(Math.max(70, zoom - 10))}
-                className="p-1.5 text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
-                title="Zoom arrière"
-              >
-                <ZoomOut className="h-3.5 w-3.5" />
-              </button>
-              <span className="text-[10px] text-[#9A9898] w-10 text-center">{zoom}%</span>
-              <button
-                onClick={() => setZoom(Math.min(150, zoom + 10))}
-                className="p-1.5 text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
-                title="Zoom avant"
-              >
-                <ZoomIn className="h-3.5 w-3.5" />
-              </button>
+          {/* Quick Stats Bar + timetable controls */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Quick Stats */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <Hash className="h-3 w-3 text-[#9A9898]" />
+                <span className="text-[10px] text-[#9A9898] font-mono">Créneaux</span>
+                <span className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC]">{totalSlots}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle className={`h-3 w-3 ${totalConflicts > 0 ? "text-[#DC2626]" : "text-[#9A9898]"}`} />
+                <span className="text-[10px] text-[#9A9898] font-mono">Conflits</span>
+                <span className={`text-xs font-bold font-mono ${totalConflicts > 0 ? "text-[#DC2626]" : "text-emerald-600"}`}>{totalConflicts}</span>
+                {totalConflicts > 0 && (
+                  <span className="w-1.5 h-1.5 bg-[#DC2626] animate-pulse" style={{ borderRadius: 0 }} />
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <BarChart3 className="h-3 w-3 text-[#9A9898]" />
+                <span className="text-[10px] text-[#9A9898] font-mono">Couverture</span>
+                <span className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC]">{coveragePercent}%</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <BookOpen className="h-3 w-3 text-[#9A9898]" />
+                <span className="text-[10px] text-[#9A9898] font-mono">Matières</span>
+                <span className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC]">{uniqueSubjects}</span>
+              </div>
+            </div>
+            {/* Timetable title + zoom + undo/redo */}
+            <div className="flex items-center gap-3">
+              <p className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC]">
+                {timetable.name} — {timetable.class.name}
+                {timetable.version > 1 && (
+                  <span className="text-[#9A9898] font-normal ml-2">v{timetable.version}</span>
+                )}
+              </p>
+              <div className="flex items-center gap-1 no-print">
+                {!viewingVersionId && (
+                  <>
+                    <button
+                      onClick={handleUndo}
+                      disabled={!canUndo}
+                      className={`p-1.5 transition-colors relative ${
+                        canUndo
+                          ? "text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]"
+                          : "text-[#E5E5E5] dark:text-[#2A2A2A] cursor-not-allowed"
+                      }`}
+                      title="Annuler (Ctrl+Z)"
+                    >
+                      <Undo2 className="h-3.5 w-3.5" />
+                      {undoCount > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 text-[7px] bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-1 py-0 font-bold leading-none font-mono">
+                          {undoCount}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={handleRedo}
+                      disabled={!canRedo}
+                      className={`p-1.5 transition-colors ${
+                        canRedo
+                          ? "text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A]"
+                          : "text-[#E5E5E5] dark:text-[#2A2A2A] cursor-not-allowed"
+                      }`}
+                      title="Rétablir (Ctrl+Shift+Z)"
+                    >
+                      <Redo2 className="h-3.5 w-3.5" />
+                    </button>
+                    <div className="w-px h-4 bg-[#E5E5E5] dark:bg-[#2A2A2A] mx-0.5" />
+                  </>
+                )}
+                <button
+                  onClick={() => setZoom(Math.max(70, zoom - 10))}
+                  className="p-1.5 text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                  title="Zoom arrière"
+                >
+                  <ZoomOut className="h-3.5 w-3.5" />
+                </button>
+                <span className="text-[10px] text-[#9A9898] w-10 text-center font-mono">{zoom}%</span>
+                <button
+                  onClick={() => setZoom(Math.min(150, zoom + 10))}
+                  className="p-1.5 text-[#9A9898] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                  title="Zoom avant"
+                >
+                  <ZoomIn className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1521,7 +1719,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
             <table className="w-full border-collapse min-w-[700px]" style={{ fontSize: `${zoom * 0.12}px` }}>
               <thead>
                 <tr className="bg-[#F8F7F7] dark:bg-[#1A1A1A]">
-                  <th className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-2 text-xs font-bold text-left w-24 text-[#201D1D] dark:text-[#FDFCFC]">
+                  <th className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-2 text-xs font-bold font-mono text-left w-24 text-[#201D1D] dark:text-[#FDFCFC]">
                     <div className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
                       Horaire
@@ -1530,7 +1728,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                   {days.map((day) => (
                     <th
                       key={day}
-                      className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-2 text-xs font-bold text-center text-[#201D1D] dark:text-[#FDFCFC]"
+                      className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-2 text-xs font-bold font-mono text-center text-[#201D1D] dark:text-[#FDFCFC]"
                     >
                       {dayNames[day] || `Jour ${day}`}
                     </th>
@@ -1538,38 +1736,51 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                 </tr>
               </thead>
               <tbody>
-                {allTimes.map((time) => {
+                {allTimes.map((time, timeIdx) => {
                   const [start, end] = time.split("-");
                   const isBreak = isBreakTime(start);
+                  const isCurrentTimeRow = currentTimePos?.rowIndex === timeIdx;
                   return (
-                    <tr key={time} className={isBreak ? "break-row" : ""}>
-                      <td className={`border border-[#E5E5E5] dark:border-[#2A2A2A] p-2 text-[10px] text-[#9A9898] whitespace-nowrap ${isBreak ? "bg-[#F8F7F7]/50 dark:bg-[#1A1A1A]/50" : ""}`}>
+                    <tr
+                      key={time}
+                      className={`group ${isBreak ? "break-row" : ""} hover:bg-[#F8F7F7]/30 dark:hover:bg-[#1A1A1A]/30 transition-colors`}
+                    >
+                      <td className={`border border-[#E5E5E5] dark:border-[#2A2A2A] p-2 text-[10px] text-[#9A9898] whitespace-nowrap font-mono ${isBreak ? "bg-[#F8F7F7]/50 dark:bg-[#1A1A1A]/50" : ""}`}>
                         <div className="flex items-center gap-1">
                           {start} — {end}
-                          {isBreak && <span className="text-[8px] font-bold text-[#D97706] ml-1">PAUSE</span>}
+                          {isBreak && <span className="text-[8px] font-bold text-[#D97706] ml-1 font-mono">PAUSE</span>}
                         </div>
                       </td>
-                      {days.map((day) => {
+                      {days.map((day, dayIdx) => {
                         const slot = slotsByDay[day]?.find(
                           (s) => `${s.startTime}-${s.endTime}` === time
                         );
+                        const isCurrentTimeCell = isCurrentTimeRow && currentTimePos?.dayIndex === dayIdx && currentTimePos.isToday;
+                        const isHighlighted = conflictHighlight.some(id => slot?.id === id);
+
                         if (!slot || !slot.subject) {
                           return (
-                            <td key={day} className={`border border-[#E5E5E5] dark:border-[#2A2A2A] p-1 timetable-cell ${isBreak ? "break-row" : ""}`}>
+                            <td
+                              key={day}
+                              className={`border border-[#E5E5E5] dark:border-[#2A2A2A] p-1 timetable-cell ${isBreak ? "break-row" : ""} relative`}
+                            >
+                              {isCurrentTimeCell && (
+                                <div className="absolute left-0 right-0 top-0 h-0.5 bg-[#DC2626] z-10" />
+                              )}
                               {dndEnabled ? (
                                 <DroppableCell
                                   id={`drop-${day}-${time}`}
                                   data={{ dayOfWeek: day, startTime: start, endTime: end }}
                                   onClick={timetableViewMode === "class" && !viewingVersionId ? () => handleOpenAddSlot(day, start, end) : undefined}
                                 >
-                                  <div className="h-full min-h-[60px] flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                                  <div className="h-full min-h-[60px] flex items-center justify-center border border-dashed border-[#E5E5E5] dark:border-[#2A2A2A]/50 opacity-0 hover:opacity-100 transition-opacity">
                                     {timetableViewMode === "class" && !viewingVersionId && (
                                       <Plus className="h-3 w-3 text-[#9A9898]" />
                                     )}
                                   </div>
                                 </DroppableCell>
                               ) : (
-                                <div className="h-full min-h-[60px]" />
+                                <div className="h-full min-h-[60px] border border-dashed border-[#E5E5E5] dark:border-[#2A2A2A]/50" />
                               )}
                             </td>
                           );
@@ -1580,8 +1791,11 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                         return (
                           <td
                             key={day}
-                            className={`border border-[#E5E5E5] dark:border-[#2A2A2A] p-1 timetable-cell ${isBreak ? "break-row" : ""}`}
+                            className={`border border-[#E5E5E5] dark:border-[#2A2A2A] p-1 timetable-cell ${isBreak ? "break-row" : ""} relative ${isHighlighted ? "ring-2 ring-inset ring-[#DC2626] animate-pulse" : ""}`}
                           >
+                            {isCurrentTimeCell && (
+                              <div className="absolute left-0 right-0 top-0 h-0.5 bg-[#DC2626] z-10" />
+                            )}
                             <Popover
                               open={isSelected}
                               onOpenChange={(open) => {
@@ -1600,8 +1814,8 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                                         borderLeftColor: slotColor.text,
                                         color: slotColor.text,
                                       }}
-                                      className={`border-l-[3px] p-2 min-h-[60px] transition-all duration-150 timetable-slot-clickable ${
-                                        isHovered || isSelected ? "ring-1 ring-[#201D1D]/20 dark:ring-[#FDFCFC]/20" : ""
+                                      className={`border-l-[3px] p-2 min-h-[60px] transition-all duration-150 timetable-slot-clickable relative group/slot ${
+                                        isHovered || isSelected ? "ring-1 ring-inset ring-[#201D1D]/20 dark:ring-[#FDFCFC]/20" : ""
                                       } ${activeSlotId === slot.id ? "opacity-40" : ""}`}
                                       onMouseEnter={() => setHoveredSlot(slot.id)}
                                       onMouseLeave={() => setHoveredSlot(null)}
@@ -1611,7 +1825,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                                         {slot.subject.name}
                                       </p>
                                       {slot.subject.type && (
-                                        <span className="text-[9px] opacity-70 uppercase">
+                                        <span className="text-[9px] opacity-70 uppercase font-mono">
                                           {slot.subject.type}
                                         </span>
                                       )}
@@ -1627,6 +1841,12 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                                           </p>
                                         )}
                                       </div>
+                                      {/* Drag hint tooltip */}
+                                      {!viewingVersionId && (
+                                        <div className="absolute bottom-1 right-1 opacity-0 group-hover/slot:opacity-100 transition-opacity pointer-events-none">
+                                          <GripVertical className="h-2.5 w-2.5 opacity-40" />
+                                        </div>
+                                      )}
                                     </div>
                                   </DraggableSlot>
                                 ) : (
@@ -1637,7 +1857,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                                       color: slotColor.text,
                                     }}
                                     className={`border-l-[3px] p-2 min-h-[60px] transition-all duration-150 timetable-slot-clickable ${
-                                      isHovered || isSelected ? "ring-1 ring-[#201D1D]/20 dark:ring-[#FDFCFC]/20" : ""
+                                      isHovered || isSelected ? "ring-1 ring-inset ring-[#201D1D]/20 dark:ring-[#FDFCFC]/20" : ""
                                     }`}
                                     onMouseEnter={() => setHoveredSlot(slot.id)}
                                     onMouseLeave={() => setHoveredSlot(null)}
@@ -1647,7 +1867,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                                       {slot.subject.name}
                                     </p>
                                     {slot.subject.type && (
-                                      <span className="text-[9px] opacity-70 uppercase">
+                                      <span className="text-[9px] opacity-70 uppercase font-mono">
                                         {slot.subject.type}
                                       </span>
                                     )}
@@ -1670,26 +1890,27 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                                 className="w-64 p-0 border-[#E5E5E5] dark:border-[#2A2A2A]"
                                 side="right"
                                 align="start"
+                                style={{ borderRadius: 0 }}
                               >
                                 <div className="border-b border-[#E5E5E5] dark:border-[#2A2A2A] px-4 py-3">
-                                  <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+                                  <p className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC]">
                                     {slot.subject.name}
                                   </p>
                                   {slot.subject.type && (
-                                    <span className="text-[10px] text-[#9A9898] uppercase">{slot.subject.type}</span>
+                                    <span className="text-[10px] text-[#9A9898] uppercase font-mono">{slot.subject.type}</span>
                                   )}
                                 </div>
                                 <div className="px-4 py-3 space-y-2">
                                   {slot.teacher && (
                                     <div className="flex items-center justify-between">
-                                      <span className="text-[10px] text-[#9A9898]">Enseignant</span>
+                                      <span className="text-[10px] text-[#9A9898] font-mono">Enseignant</span>
                                       <button
                                         onClick={() => {
                                           setSelectedSlot(null);
                                           setTimetableViewMode("teacher");
                                           setSelectedTeacherId(slot.teacher!.id);
                                         }}
-                                        className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold hover:underline flex items-center gap-1"
+                                        className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold hover:underline flex items-center gap-1 font-mono"
                                       >
                                         {slot.teacher.firstName} {slot.teacher.lastName}
                                         <ExternalLink className="h-2.5 w-2.5" />
@@ -1698,14 +1919,14 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                                   )}
                                   {slot.room && (
                                     <div className="flex items-center justify-between">
-                                      <span className="text-[10px] text-[#9A9898]">Salle</span>
+                                      <span className="text-[10px] text-[#9A9898] font-mono">Salle</span>
                                       <button
                                         onClick={() => {
                                           setSelectedSlot(null);
                                           setTimetableViewMode("room");
                                           setSelectedRoomId(slot.room!.id);
                                         }}
-                                        className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold hover:underline flex items-center gap-1"
+                                        className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-bold hover:underline flex items-center gap-1 font-mono"
                                       >
                                         {slot.room.name}
                                         {slot.room.type && <span className="text-[10px] text-[#9A9898] font-normal ml-1">({slot.room.type})</span>}
@@ -1714,14 +1935,14 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                                     </div>
                                   )}
                                   <div className="flex items-center justify-between">
-                                    <span className="text-[10px] text-[#9A9898]">Horaire</span>
-                                    <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC]">
+                                    <span className="text-[10px] text-[#9A9898] font-mono">Horaire</span>
+                                    <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-mono">
                                       {start} — {end}
                                     </span>
                                   </div>
                                   <div className="flex items-center justify-between">
-                                    <span className="text-[10px] text-[#9A9898]">Jour</span>
-                                    <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC]">
+                                    <span className="text-[10px] text-[#9A9898] font-mono">Jour</span>
+                                    <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-mono">
                                       {dayNames[slot.dayOfWeek] || `Jour ${slot.dayOfWeek}`}
                                     </span>
                                   </div>
@@ -1731,14 +1952,14 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                                   <div className="border-t border-[#E5E5E5] dark:border-[#2A2A2A] px-4 py-2 flex gap-2">
                                     <button
                                       onClick={handleEditSlot}
-                                      className="flex-1 flex items-center justify-center gap-1 text-[10px] text-[#201D1D] dark:text-[#FDFCFC] font-bold py-1.5 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                                      className="flex-1 flex items-center justify-center gap-1 text-[10px] text-[#201D1D] dark:text-[#FDFCFC] font-bold font-mono py-1.5 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
                                     >
                                       <Pencil className="h-3 w-3" />
                                       Modifier
                                     </button>
                                     <button
                                       onClick={handleDeleteSlot}
-                                      className="flex-1 flex items-center justify-center gap-1 text-[10px] text-[#DC2626] font-bold py-1.5 hover:bg-[#DC2626]/5 transition-colors"
+                                      className="flex-1 flex items-center justify-center gap-1 text-[10px] text-[#DC2626] font-bold font-mono py-1.5 hover:bg-[#DC2626]/5 transition-colors"
                                     >
                                       <Trash2 className="h-3 w-3" />
                                       Supprimer
@@ -1782,72 +2003,93 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
                   <div key={subjectId} className="flex items-center gap-1.5">
                     <div
                       className="h-3 w-3 border-l-[3px]"
-                      style={{ backgroundColor: subjectColor.bg, borderLeftColor: subjectColor.text }}
+                      style={{ backgroundColor: subjectColor.bg, borderLeftColor: subjectColor.text, borderRadius: 0 }}
                     />
-                    <span className="text-[10px] text-[#646262]">{info.name}</span>
-                    <span className="text-[10px] text-[#9A9898]">({info.hours}h)</span>
+                    <span className="text-[10px] text-[#646262] font-mono">{info.name}</span>
+                    <span className="text-[10px] text-[#9A9898] font-mono">({info.hours}h)</span>
                   </div>
                 );
               })}
             </div>
           )}
 
-          {/* TASK 1: Version History - enhanced with slot count */}
+          {/* Version History - improved timeline */}
           {versions.length > 1 && (
             <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-4 no-print">
               <div className="flex items-center gap-2 mb-3">
                 <History className="h-3.5 w-3.5 text-[#9A9898]" />
-                <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC]">
+                <p className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC]">
                   Historique des versions
                 </p>
+                <span className="text-[9px] text-[#9A9898] font-mono ml-1">{versions.length} versions</span>
               </div>
-              <div className="space-y-0 max-h-48 overflow-y-auto scrollbar-thin">
+              <div className="relative pl-4 space-y-0 max-h-64 overflow-y-auto">
+                {/* Timeline line */}
+                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-[#E5E5E5] dark:bg-[#2A2A2A]" />
                 {versions
                   .sort((a, b) => b.version - a.version)
-                  .map((v) => (
-                    <div
-                      key={v.id}
-                      className={`flex items-center justify-between py-2 px-3 border-b border-[#E5E5E5] dark:border-[#2A2A2A] last:border-0 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors ${
-                        v.id === timetable?.id ? "bg-[#F8F7F7] dark:bg-[#1A1A1A]" : ""
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-[10px] font-bold text-[#201D1D] dark:text-[#FDFCFC]">
-                          v{v.version}
-                        </span>
-                        <span className="text-[10px] text-[#9A9898]">
-                          {new Date(v.createdAt).toLocaleDateString("fr-FR")} {new Date(v.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                        <span className="text-[10px] text-[#9A9898]">
-                          {v._count?.slots ?? 0} créneau{(v._count?.slots ?? 0) !== 1 ? "x" : ""}
-                        </span>
-                        {v.isActive && (
-                          <span className="text-[10px] bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-1.5 py-0.5 font-bold">
-                            Active
+                  .map((v, idx) => {
+                    const currentSlotCount = v._count?.slots ?? 0;
+                    const prevV = versions.sort((a2, b2) => b2.version - a2.version)[idx + 1];
+                    const prevSlotCount = prevV?._count?.slots ?? 0;
+                    const diff = currentSlotCount - prevSlotCount;
+                    return (
+                      <div
+                        key={v.id}
+                        className={`relative flex items-center justify-between py-2.5 px-3 border-b border-[#E5E5E5] dark:border-[#2A2A2A] last:border-0 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors ${
+                          v.id === timetable?.id ? "bg-[#F8F7F7] dark:bg-[#1A1A1A]" : ""
+                        }`}
+                      >
+                        {/* Timeline dot */}
+                        <div className={`absolute left-[-21px] top-1/2 -translate-y-1/2 w-2 h-2 border ${
+                          v.isActive
+                            ? "bg-[#201D1D] dark:bg-[#FDFCFC] border-[#201D1D] dark:border-[#FDFCFC]"
+                            : "bg-[#FDFCFC] dark:bg-[#1A1A1A] border-[#9A9898]"
+                        }`} style={{ borderRadius: 0 }} />
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC]">
+                            v{v.version}
                           </span>
-                        )}
+                          <span className="text-[10px] text-[#9A9898] font-mono">
+                            {new Date(v.createdAt).toLocaleDateString("fr-FR")} {new Date(v.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                          <span className="text-[10px] text-[#9A9898] font-mono">
+                            {currentSlotCount} créneau{currentSlotCount !== 1 ? "x" : ""}
+                          </span>
+                          {idx < versions.sort((a2, b2) => b2.version - a2.version).length - 1 && diff !== 0 && (
+                            <span className={`text-[9px] font-mono font-bold ${diff > 0 ? "text-emerald-600" : "text-[#DC2626]"}`}>
+                              {diff > 0 ? "+" : ""}{diff}
+                            </span>
+                          )}
+                          {v.isActive && (
+                            <span className="text-[10px] font-mono bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] px-1.5 py-0.5 font-bold" style={{ borderRadius: 0 }}>
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {!v.isActive && (
+                            <>
+                              <button
+                                onClick={() => handleViewVersion(v.id)}
+                                className="text-[10px] font-mono text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] px-2 py-1 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
+                              >
+                                <Eye className="h-3 w-3 inline mr-0.5" />
+                                Voir
+                              </button>
+                              <button
+                                onClick={() => handleRestoreVersion(v.id)}
+                                className="text-[10px] font-mono text-[#D97706] hover:text-[#D97706] px-2 py-1 hover:bg-[#D97706]/5 transition-colors"
+                              >
+                                <RotateCcw className="h-3 w-3 inline mr-0.5" />
+                                Restaurer
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        {!v.isActive && (
-                          <>
-                            <button
-                              onClick={() => handleViewVersion(v.id)}
-                              className="text-[10px] text-[#646262] hover:text-[#201D1D] dark:hover:text-[#FDFCFC] px-2 py-1 hover:bg-[#F8F7F7] dark:hover:bg-[#1A1A1A] transition-colors"
-                            >
-                              Voir
-                            </button>
-                            <button
-                              onClick={() => handleRestoreVersion(v.id)}
-                              className="text-[10px] text-[#D97706] hover:text-[#D97706] px-2 py-1 hover:bg-[#D97706]/5 transition-colors"
-                            >
-                              <RotateCcw className="h-3 w-3 inline mr-1" />
-                              Restaurer
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
               </div>
             </div>
           )}
@@ -1864,17 +2106,17 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
 
       {/* Edit Slot Dialog */}
       <Dialog open={editSlotOpen} onOpenChange={setEditSlotOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" style={{ borderRadius: 0 }}>
           <DialogHeader>
-            <DialogTitle className="text-sm font-bold">Modifier le créneau</DialogTitle>
+            <DialogTitle className="text-sm font-bold font-mono">Modifier le créneau</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
+              <label className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
                 Enseignant
               </label>
               <Select value={editSlotData.teacherId} onValueChange={(v) => setEditSlotData((prev) => ({ ...prev, teacherId: v }))}>
-                <SelectTrigger className="text-xs">
+                <SelectTrigger className="text-xs font-mono rounded-none">
                   <SelectValue placeholder="Choisir un enseignant" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1885,11 +2127,11 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
               </Select>
             </div>
             <div>
-              <label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
+              <label className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
                 Salle
               </label>
               <Select value={editSlotData.roomId} onValueChange={(v) => setEditSlotData((prev) => ({ ...prev, roomId: v }))}>
-                <SelectTrigger className="text-xs">
+                <SelectTrigger className="text-xs font-mono rounded-none">
                   <SelectValue placeholder="Choisir une salle" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1901,12 +2143,12 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditSlotOpen(false)} className="text-xs">
+            <Button variant="ghost" onClick={() => setEditSlotOpen(false)} className="text-xs font-mono rounded-none">
               Annuler
             </Button>
             <Button
               onClick={handleSaveSlotEdit}
-              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+              className="text-xs font-mono bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0 rounded-none"
             >
               Enregistrer
             </Button>
@@ -1916,25 +2158,25 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
 
       {/* DnD Conflict Confirmation Dialog */}
       <Dialog open={conflictDialogOpen} onOpenChange={setConflictDialogOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" style={{ borderRadius: 0 }}>
           <DialogHeader>
-            <DialogTitle className="text-sm font-bold flex items-center gap-2">
+            <DialogTitle className="text-sm font-bold font-mono flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-[#D97706]" />
               Conflit détecté
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-xs text-[#646262] dark:text-[#9A9898]">
+            <p className="text-xs text-[#646262] dark:text-[#9A9898] font-mono">
               Le déplacement de ce créneau crée les conflits suivants:
             </p>
             <div className="space-y-2">
               {conflictMessages.map((msg, i) => (
                 <div key={i} className="border border-[#D97706]/30 bg-[#D97706]/5 dark:bg-[#D97706]/10 p-2">
-                  <p className="text-[10px] text-[#D97706] font-bold">{msg}</p>
+                  <p className="text-[10px] text-[#D97706] font-bold font-mono">{msg}</p>
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-[#9A9898]">
+            <p className="text-[10px] text-[#9A9898] font-mono">
               Voulez-vous conserver ce déplacement malgré les conflits?
             </p>
           </div>
@@ -1942,13 +2184,13 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
             <Button
               variant="ghost"
               onClick={handleConflictCancel}
-              className="text-xs"
+              className="text-xs font-mono rounded-none"
             >
               Annuler le déplacement
             </Button>
             <Button
               onClick={handleConflictConfirm}
-              className="text-xs bg-[#D97706] text-white hover:opacity-80 border-0"
+              className="text-xs font-mono bg-[#D97706] text-white hover:opacity-80 border-0 rounded-none"
             >
               Conserver le déplacement
             </Button>
@@ -1958,9 +2200,9 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
 
       {/* Add Slot Dialog */}
       <Dialog open={addSlotOpen} onOpenChange={setAddSlotOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" style={{ borderRadius: 0 }}>
           <DialogHeader>
-            <DialogTitle className="text-sm font-bold flex items-center gap-2">
+            <DialogTitle className="text-sm font-bold font-mono flex items-center gap-2">
               <Plus className="h-4 w-4" />
               Ajouter un créneau
             </DialogTitle>
@@ -1969,13 +2211,13 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
             {/* Time info display */}
             <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-3 bg-[#F8F7F7] dark:bg-[#1A1A1A]">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[#9A9898] uppercase font-bold tracking-wider">Jour</span>
+                <span className="text-[10px] text-[#9A9898] uppercase font-bold tracking-wider font-mono">Jour</span>
                 <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-mono font-bold">
                   {dayNames[addSlotData.dayOfWeek] || `Jour ${addSlotData.dayOfWeek}`}
                 </span>
               </div>
               <div className="flex items-center justify-between mt-1">
-                <span className="text-[10px] text-[#9A9898] uppercase font-bold tracking-wider">Horaire</span>
+                <span className="text-[10px] text-[#9A9898] uppercase font-bold tracking-wider font-mono">Horaire</span>
                 <span className="text-xs text-[#201D1D] dark:text-[#FDFCFC] font-mono font-bold">
                   {addSlotData.startTime} — {addSlotData.endTime}
                 </span>
@@ -1983,11 +2225,11 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
             </div>
             {/* Subject selection */}
             <div>
-              <label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
+              <label className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
                 Matière <span className="text-[#DC2626]">*</span>
               </label>
               <Select value={addSlotData.subjectId} onValueChange={(v) => setAddSlotData((prev) => ({ ...prev, subjectId: v }))}>
-                <SelectTrigger className="text-xs font-mono">
+                <SelectTrigger className="text-xs font-mono rounded-none">
                   <SelectValue placeholder="> Sélectionner une matière" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2001,11 +2243,11 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
             </div>
             {/* Teacher selection */}
             <div>
-              <label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
+              <label className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
                 Enseignant
               </label>
               <Select value={addSlotData.teacherId} onValueChange={(v) => setAddSlotData((prev) => ({ ...prev, teacherId: v }))}>
-                <SelectTrigger className="text-xs font-mono">
+                <SelectTrigger className="text-xs font-mono rounded-none">
                   <SelectValue placeholder="> Sélectionner un enseignant" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2017,11 +2259,11 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
             </div>
             {/* Room selection */}
             <div>
-              <label className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
+              <label className="text-xs font-bold font-mono text-[#201D1D] dark:text-[#FDFCFC] mb-1 block">
                 Salle
               </label>
               <Select value={addSlotData.roomId} onValueChange={(v) => setAddSlotData((prev) => ({ ...prev, roomId: v }))}>
-                <SelectTrigger className="text-xs font-mono">
+                <SelectTrigger className="text-xs font-mono rounded-none">
                   <SelectValue placeholder="> Sélectionner une salle" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2033,13 +2275,13 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setAddSlotOpen(false)} className="text-xs">
+            <Button variant="ghost" onClick={() => setAddSlotOpen(false)} className="text-xs font-mono rounded-none">
               Annuler
             </Button>
             <Button
               onClick={handleSaveAddSlot}
               disabled={!addSlotData.subjectId}
-              className="text-xs bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0"
+              className="text-xs font-mono bg-[#201D1D] dark:bg-[#FDFCFC] text-[#FDFCFC] dark:text-[#0A0A0A] hover:opacity-80 border-0 rounded-none"
             >
               <Plus className="h-3 w-3 mr-1" />
               Ajouter
