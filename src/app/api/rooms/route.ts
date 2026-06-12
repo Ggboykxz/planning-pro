@@ -1,8 +1,14 @@
 import { dataStore, isDatabaseAvailable, checkPlanLimit } from "@/lib/data-store";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const institutionId = searchParams.get("institutionId");
     if (!institutionId) {
@@ -36,6 +42,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
 
     // Check plan limits
@@ -72,6 +83,11 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { id, ...data } = body;
     if (!id) {
@@ -96,6 +112,11 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     if (!id) {

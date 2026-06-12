@@ -1,8 +1,14 @@
 import { dataStore, isDatabaseAvailable } from "@/lib/data-store";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const institutionId = searchParams.get("institutionId");
     if (!institutionId) {
@@ -23,12 +29,21 @@ export async function GET(request: Request) {
       return NextResponse.json(classes);
     }
 
-    // Fallback: basic data
+    // Fallback: basic data with enrichment
     const classes = await dataStore.class.findMany({ where: { institutionId } });
+    const classSubjects = await dataStore.classSubject.findMany({ where: { institutionId } });
+    const subjects = await dataStore.subject.findMany({ where: { institutionId } });
+    const timetables = await dataStore.timetable.findMany({ where: { institutionId } });
+
     return NextResponse.json(classes.map((c) => ({
       ...c,
-      subjects: [],
-      timetables: [],
+      subjects: classSubjects
+        .filter((cs) => cs.classId === c.id)
+        .map((cs) => ({
+          ...cs,
+          subject: subjects.find((s) => s.id === cs.subjectId) || null,
+        })),
+      timetables: timetables.filter((t) => t.classId === c.id),
     })));
   } catch (error) {
     console.error("GET /api/classes error:", error);
@@ -38,6 +53,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
     const cls = await dataStore.class.create({
       data: {
@@ -50,14 +70,31 @@ export async function POST(request: Request) {
       },
     });
 
-    // Create class-subject associations if DB available
-    if (body.subjectIds && Array.isArray(body.subjectIds) && await isDatabaseAvailable()) {
-      try {
-        const { db } = await import("@/lib/db");
+    // Create class-subject associations
+    if (body.subjectIds && Array.isArray(body.subjectIds)) {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          for (const item of body.subjectIds) {
+            const subjectId = typeof item === "string" ? item : item.subjectId;
+            const hours = typeof item === "object" ? item.hoursPerWeek : null;
+            await db.classSubject.create({
+              data: {
+                classId: cls.id,
+                subjectId,
+                institutionId: body.institutionId,
+                hoursPerWeek: hours,
+              },
+            });
+          }
+        } catch {
+          // Silently skip in fallback mode
+        }
+      } else {
         for (const item of body.subjectIds) {
           const subjectId = typeof item === "string" ? item : item.subjectId;
           const hours = typeof item === "object" ? item.hoursPerWeek : null;
-          await db.classSubject.create({
+          await dataStore.classSubject.create({
             data: {
               classId: cls.id,
               subjectId,
@@ -66,8 +103,6 @@ export async function POST(request: Request) {
             },
           });
         }
-      } catch {
-        // Silently skip in fallback mode
       }
     }
 
@@ -83,6 +118,11 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { id, subjectIds, ...data } = body;
     if (!id) {
@@ -94,15 +134,33 @@ export async function PUT(request: Request) {
       data,
     });
 
-    // Update class-subject associations if DB available
-    if (subjectIds && Array.isArray(subjectIds) && await isDatabaseAvailable()) {
-      try {
-        const { db } = await import("@/lib/db");
-        await db.classSubject.deleteMany({ where: { classId: id } });
+    // Update class-subject associations
+    if (subjectIds && Array.isArray(subjectIds)) {
+      if (await isDatabaseAvailable()) {
+        try {
+          const { db } = await import("@/lib/db");
+          await db.classSubject.deleteMany({ where: { classId: id } });
+          for (const item of subjectIds) {
+            const subjectId = typeof item === "string" ? item : item.subjectId;
+            const hours = typeof item === "object" ? item.hoursPerWeek : null;
+            await db.classSubject.create({
+              data: {
+                classId: id,
+                subjectId,
+                institutionId: body.institutionId || cls.institutionId,
+                hoursPerWeek: hours,
+              },
+            });
+          }
+        } catch {
+          // Silently skip in fallback mode
+        }
+      } else {
+        await dataStore.classSubject.deleteMany({ where: { institutionId: cls.institutionId } });
         for (const item of subjectIds) {
           const subjectId = typeof item === "string" ? item : item.subjectId;
           const hours = typeof item === "object" ? item.hoursPerWeek : null;
-          await db.classSubject.create({
+          await dataStore.classSubject.create({
             data: {
               classId: id,
               subjectId,
@@ -111,8 +169,6 @@ export async function PUT(request: Request) {
             },
           });
         }
-      } catch {
-        // Silently skip in fallback mode
       }
     }
 
@@ -125,6 +181,11 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     if (!id) {

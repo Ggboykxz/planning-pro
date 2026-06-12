@@ -27,6 +27,7 @@ import {
   Upload,
   Download,
   X,
+  AlertCircle,
   Wrench,
   Users,
   LayoutGrid,
@@ -100,6 +101,7 @@ interface RoomsViewProps {
 export function RoomsView({ institutionId }: RoomsViewProps) {
   const [rooms, setRooms] = useState<RoomData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<RoomData | null>(null);
   const [saving, setSaving] = useState(false);
@@ -134,7 +136,9 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
   });
 
   useEffect(() => {
-    loadRooms();
+    const controller = new AbortController();
+    loadRooms(controller.signal);
+    return () => controller.abort();
   }, [institutionId]);
 
   useEffect(() => {
@@ -158,12 +162,19 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
     }
   }, [rooms.length]);
 
-  const loadRooms = async () => {
+  const loadRooms = async (signal?: AbortSignal) => {
     try {
-      const res = await fetch(`/api/rooms?institutionId=${institutionId}`);
-      if (res.ok) setRooms(await res.json());
-    } catch (error) {
-      console.error(error);
+      setError(false);
+      const res = await fetch(`/api/rooms?institutionId=${institutionId}`, { signal });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setRooms(data);
+      } else {
+        setError(true);
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -570,6 +581,24 @@ export function RoomsView({ institutionId }: RoomsViewProps) {
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="h-12 skeleton-shimmer" />
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Salles</h1>
+        <div className="border border-[#DC2626] p-6 flex flex-col items-center gap-4">
+          <AlertCircle className="h-8 w-8 text-[#DC2626]" />
+          <p className="text-xs text-[#201D1D] dark:text-[#FDFCFC] text-center">Impossible de charger les salles.</p>
+          <button
+            onClick={() => { setLoading(true); loadRooms(); }}
+            className="text-xs px-4 py-2 border border-[#201D1D] dark:border-[#FDFCFC] text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#201D1D] hover:text-[#FDFCFC] dark:hover:bg-[#FDFCFC] dark:hover:text-[#0A0A0A] transition-colors"
+          >
+            Réessayer
+          </button>
         </div>
       </div>
     );

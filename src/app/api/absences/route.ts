@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dataStore } from "@/lib/data-store";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 
 // GET /api/absences — List absences with filters
 export async function GET(request: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(request as unknown as Request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const institutionId = searchParams.get("institutionId");
     const teacherId = searchParams.get("teacherId");
@@ -61,6 +67,11 @@ export async function GET(request: NextRequest) {
 // POST /api/absences — Create an absence
 export async function POST(request: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(request as unknown as Request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
     const {
       institutionId,
@@ -109,6 +120,11 @@ export async function POST(request: NextRequest) {
 // PUT /api/absences — Update an absence
 export async function PUT(request: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(request as unknown as Request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { id, status, substituteTeacherId, notes } = body;
 
@@ -143,6 +159,11 @@ export async function PUT(request: NextRequest) {
 // DELETE /api/absences — Delete an absence
 export async function DELETE(request: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(request as unknown as Request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 

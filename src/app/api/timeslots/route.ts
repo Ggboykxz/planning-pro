@@ -1,9 +1,14 @@
 import { dataStore } from "@/lib/data-store";
-import { generateTimeSlots } from "@/lib/schedule-utils";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const institutionId = searchParams.get("institutionId");
     if (!institutionId) {
@@ -22,6 +27,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
 
     // Auto-generate from institution config
@@ -33,17 +43,19 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Institution non trouvée" }, { status: 404 });
       }
 
+      const { generateTimeSlots } = await import("@/lib/schedule-utils");
       const workingDays = JSON.parse(institution.workingDays) as string[];
       const slots = generateTimeSlots(
         workingDays,
         institution.dayStartTime,
         institution.dayEndTime,
-        institution.breakStartTime,
-        institution.breakEndTime,
+        institution.breakStartTime ?? null,
+        institution.breakEndTime ?? null,
         institution.slotDuration
       );
 
-      const created = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const created: any[] = [];
       for (const slot of slots) {
         const ts = await dataStore.timeSlot.create({
           data: {
@@ -62,7 +74,8 @@ export async function POST(request: Request) {
 
     // Support bulk creation
     if (Array.isArray(body.slots)) {
-      const created = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const created: any[] = [];
       for (const slot of body.slots) {
         const ts = await dataStore.timeSlot.create({
           data: {
@@ -101,6 +114,11 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const institutionId = searchParams.get("institutionId");
     if (institutionId) {

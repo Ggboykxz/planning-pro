@@ -79,8 +79,8 @@ export default function PricingPage() {
           const data = await res.json();
           setUsage(data.usage);
         }
-      } catch (error) {
-        console.error(error);
+      } catch {
+        // Silently fail - usage will be empty
       } finally {
         setLoadingUsage(false);
       }

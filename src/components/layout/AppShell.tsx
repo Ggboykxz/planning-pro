@@ -72,10 +72,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     restoreSession();
   }, [restoreSession]);
 
-  // Load institution when user is authenticated - only once per institutionId
+  // Load institution when user is authenticated
   const institutionLoaded = useRef(false);
   useEffect(() => {
-    if (!isAuthenticated || !institutionId) return;
+    if (!isAuthenticated) return;
     if (institutionLoaded.current && institution?.id === institutionId) return;
     institutionLoaded.current = true;
 
@@ -84,16 +84,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         const res = await fetch("/api/institution");
         if (res.ok) {
           const data = await res.json();
-          if (data.length > 0) {
+          if (Array.isArray(data) && data.length > 0) {
             // Find the current institution by ID, or fall back to first
-            const inst = data.find((i: InstitutionData) => i.id === institutionId) || data[0];
+            const inst = institutionId
+              ? data.find((i: InstitutionData) => i.id === institutionId) || data[0]
+              : data[0];
             setInstitution(inst);
             setInstitutionId(inst.id);
+          } else {
+            // No institutions found - user needs onboarding
+            setLoadingInstitution(false);
           }
+        } else if (res.status === 401) {
+          // Not authenticated - will be handled by auth redirect
+          setLoadingInstitution(false);
         }
-      } catch (error) {
-        console.error(error);
-      } finally {
+      } catch {
         setLoadingInstitution(false);
       }
     };
@@ -110,12 +116,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           return res.json();
         })
         .then((data) => {
-          if (data.length > 0) {
+          if (Array.isArray(data) && data.length > 0) {
             const inst = data.find((i: InstitutionData) => i.id === institutionId) || data[0];
             setInstitution(inst);
           }
         })
-        .catch(console.error);
+        .catch(() => {
+          // Silently fail - institution data will be empty
+        });
     }
   }, [institutionId, institution, isAuthenticated]);
 

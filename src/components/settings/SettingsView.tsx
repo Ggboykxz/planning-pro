@@ -637,11 +637,13 @@ export function SettingsView({ institutionId, onUpdate }: SettingsViewProps) {
       const res = await fetch("/api/institution");
       if (res.ok) {
         const data = await res.json();
-        const inst = data.find((i: InstitutionData) => i.id === institutionId);
-        if (inst) setInstitution(inst);
+        if (Array.isArray(data)) {
+          const inst = data.find((i: InstitutionData) => i.id === institutionId);
+          if (inst) setInstitution(inst);
+        }
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
+      // Silently fail - error state handled by loading check
     } finally {
       setLoading(false);
     }

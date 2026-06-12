@@ -1,20 +1,24 @@
 import { dataStore, isDatabaseAvailable, checkPlanLimit } from "@/lib/data-store";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const institutionId = searchParams.get("institutionId");
     if (!institutionId) {
       return NextResponse.json({ error: "institutionId requis" }, { status: 400 });
     }
 
-    const teachers = await dataStore.teacher.findMany({ where: { institutionId } });
-
-    // Enrich with subject assignments and slot count if DB available
+    // Try enriched query with DB
     if (await isDatabaseAvailable()) {
       const { db } = await import("@/lib/db");
-      const enriched = await db.teacher.findMany({
+      const teachers = await db.teacher.findMany({
         where: { institutionId },
         include: {
           subjectAssignments: { include: { subject: true } },
@@ -22,13 +26,14 @@ export async function GET(request: Request) {
         },
         orderBy: { lastName: "asc" },
       });
-      return NextResponse.json(enriched);
+      return NextResponse.json(teachers);
     }
 
-    // Fallback: return basic teacher data
+    // Fallback: basic data with subject assignments from in-memory store
+    const teachers = await dataStore.teacher.findMany({ where: { institutionId }, include: { subjectAssignments: true } });
     return NextResponse.json(teachers.map((t) => ({
       ...t,
-      subjectAssignments: [],
+      subjectAssignments: (t as unknown as Record<string, unknown>).subjectAssignments || [],
       timetableSlots: [],
     })));
   } catch (error) {
@@ -39,6 +44,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
 
     // Check plan limits
@@ -81,6 +91,17 @@ export async function POST(request: Request) {
       } catch {
         // Silently skip subject assignments in fallback mode
       }
+    } else if (body.subjectIds && Array.isArray(body.subjectIds)) {
+      // Fallback: create via dataStore
+      for (const subjectId of body.subjectIds) {
+        await dataStore.teacherSubject.create({
+          data: {
+            teacherId: teacher.id,
+            subjectId,
+            institutionId: body.institutionId,
+          },
+        });
+      }
     }
 
     return NextResponse.json(teacher);
@@ -95,6 +116,11 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { id, subjectIds, ...data } = body;
     if (!id) {
@@ -124,6 +150,14 @@ export async function PUT(request: Request) {
       } catch {
         // Silently skip in fallback mode
       }
+    } else if (subjectIds && Array.isArray(subjectIds)) {
+      // Fallback: update via dataStore
+      await dataStore.teacherSubject.deleteMany({ where: { teacherId: id } });
+      for (const subjectId of subjectIds) {
+        await dataStore.teacherSubject.create({
+          data: { teacherId: id, subjectId, institutionId: body.institutionId },
+        });
+      }
     }
 
     return NextResponse.json(teacher);
@@ -135,6 +169,11 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     if (!id) {

@@ -1,10 +1,46 @@
 import { dataStore } from "@/lib/data-store";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 import { NextResponse } from "next/server";
 
-export async function GET() {
+// GET /api/institution - List institutions for the authenticated user
+export async function GET(request: Request) {
   try {
-    const institutions = await dataStore.institution.findMany();
-    return NextResponse.json(institutions);
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
+    // If user has institutionId on their profile, use that as primary
+    // Also check UserInstitution records
+    const userInstitutions = await dataStore.userInstitution.findMany({
+      where: { userId: authUser.id },
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const results: any[] = [];
+    for (const ui of userInstitutions) {
+      const institution = await dataStore.institution.findUnique({
+        where: { id: ui.institutionId },
+      });
+      if (institution) {
+        results.push({
+          ...institution,
+          userRole: ui.role ?? null,
+        });
+      }
+    }
+
+    // If user has institutionId but no UserInstitution record (legacy data), add it
+    if (authUser.institutionId && !results.find((r: { id: string }) => r.id === authUser.institutionId)) {
+      const institution = await dataStore.institution.findUnique({
+        where: { id: authUser.institutionId! },
+      });
+      if (institution) {
+        results.push({ ...institution, userRole: "admin" });
+      }
+    }
+
+    return NextResponse.json(results);
   } catch (error) {
     console.error("GET /api/institution error:", error);
     return NextResponse.json({ error: "Erreur lors de la récupération des institutions" }, { status: 500 });
@@ -13,6 +49,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
 
     // Validate required fields
@@ -46,7 +87,25 @@ export async function POST(request: Request) {
         semesterSystem: body.semesterSystem || null,
       },
     });
-    return NextResponse.json(institution);
+
+    // Create UserInstitution record linking user to this institution as admin
+    await dataStore.userInstitution.create({
+      data: {
+        userId: authUser.id,
+        institutionId: institution.id,
+        role: "admin",
+      },
+    });
+
+    // Update user's institutionId if not set
+    if (!authUser.institutionId) {
+      await dataStore.user.update({
+        where: { id: authUser.id },
+        data: { institutionId: institution.id },
+      });
+    }
+
+    return NextResponse.json({ ...institution, userRole: "admin" });
   } catch (error) {
     console.error("POST /api/institution error:", error);
     return NextResponse.json({
@@ -58,6 +117,11 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { id, ...data } = body;
     if (!id) {
@@ -85,6 +149,11 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     if (!id) {

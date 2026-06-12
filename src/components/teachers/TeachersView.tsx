@@ -69,6 +69,7 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
   const [teachers, setTeachers] = useState<TeacherData[]>([]);
   const [subjects, setSubjects] = useState<SubjectData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<TeacherData | null>(null);
   const [saving, setSaving] = useState(false);
@@ -112,7 +113,9 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
   });
 
   useEffect(() => {
-    loadData();
+    const controller = new AbortController();
+    loadData(controller.signal);
+    return () => controller.abort();
   }, [institutionId]);
 
   // Focus first input when dialog opens
@@ -137,16 +140,26 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
     }
   }, [teachers.length]);
 
-  const loadData = async () => {
+  const loadData = async (signal?: AbortSignal) => {
     try {
+      setError(false);
       const [tRes, sRes] = await Promise.all([
-        fetch(`/api/teachers?institutionId=${institutionId}`),
-        fetch(`/api/subjects?institutionId=${institutionId}`),
+        fetch(`/api/teachers?institutionId=${institutionId}`, { signal }),
+        fetch(`/api/subjects?institutionId=${institutionId}`, { signal }),
       ]);
-      if (tRes.ok) setTeachers(await tRes.json());
-      if (sRes.ok) setSubjects((await sRes.json()).map((s: SubjectData) => s));
-    } catch (error) {
-      console.error(error);
+      if (tRes.ok) {
+        const tData = await tRes.json();
+        if (Array.isArray(tData)) setTeachers(tData);
+      } else {
+        setError(true);
+      }
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        if (Array.isArray(sData)) setSubjects(sData.map((s: SubjectData) => s));
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -539,6 +552,24 @@ export function TeachersView({ institutionId }: TeachersViewProps) {
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="h-12 skeleton-shimmer" />
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-[#201D1D] dark:text-[#FDFCFC]">Enseignants</h1>
+        <div className="border border-[#DC2626] p-6 flex flex-col items-center gap-4">
+          <AlertCircle className="h-8 w-8 text-[#DC2626]" />
+          <p className="text-xs text-[#201D1D] dark:text-[#FDFCFC] text-center">Impossible de charger les enseignants.</p>
+          <button
+            onClick={() => { setLoading(true); loadData(); }}
+            className="text-xs px-4 py-2 border border-[#201D1D] dark:border-[#FDFCFC] text-[#201D1D] dark:text-[#FDFCFC] hover:bg-[#201D1D] hover:text-[#FDFCFC] dark:hover:bg-[#FDFCFC] dark:hover:text-[#0A0A0A] transition-colors"
+          >
+            Réessayer
+          </button>
         </div>
       </div>
     );

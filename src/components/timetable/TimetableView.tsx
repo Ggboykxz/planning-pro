@@ -198,44 +198,54 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
   } = useAppStore();
 
   useEffect(() => {
-    loadData();
+    const controller = new AbortController();
+    loadData(controller.signal);
+    return () => controller.abort();
   }, [institutionId]);
 
-  const loadData = async () => {
+  const loadData = async (signal?: AbortSignal) => {
     try {
       const [cRes, tRes, rRes, sRes] = await Promise.all([
-        fetch(`/api/classes?institutionId=${institutionId}`),
-        fetch(`/api/teachers?institutionId=${institutionId}`),
-        fetch(`/api/rooms?institutionId=${institutionId}`),
-        fetch(`/api/subjects?institutionId=${institutionId}`),
+        fetch(`/api/classes?institutionId=${institutionId}`, { signal }),
+        fetch(`/api/teachers?institutionId=${institutionId}`, { signal }),
+        fetch(`/api/rooms?institutionId=${institutionId}`, { signal }),
+        fetch(`/api/subjects?institutionId=${institutionId}`, { signal }),
       ]);
       if (cRes.ok) {
         const cData = await cRes.json();
-        setClasses(cData);
-        if (cData.length > 0 && !selectedClassId) {
-          setSelectedClassId(cData[0].id);
+        if (Array.isArray(cData)) {
+          setClasses(cData);
+          if (cData.length > 0 && !selectedClassId) {
+            setSelectedClassId(cData[0].id);
+          }
         }
       }
       if (tRes.ok) {
         const tData = await tRes.json();
-        setTeachers(tData.map((t: TeacherOption) => ({ id: t.id, firstName: t.firstName, lastName: t.lastName })));
-        if (tData.length > 0 && !selectedTeacherId) {
-          setSelectedTeacherId(tData[0].id);
+        if (Array.isArray(tData)) {
+          setTeachers(tData.map((t: TeacherOption) => ({ id: t.id, firstName: t.firstName, lastName: t.lastName })));
+          if (tData.length > 0 && !selectedTeacherId) {
+            setSelectedTeacherId(tData[0].id);
+          }
         }
       }
       if (rRes.ok) {
         const rData = await rRes.json();
-        setRooms(rData.map((r: RoomOption) => ({ id: r.id, name: r.name })));
-        if (rData.length > 0 && !selectedRoomId) {
-          setSelectedRoomId(rData[0].id);
+        if (Array.isArray(rData)) {
+          setRooms(rData.map((r: RoomOption) => ({ id: r.id, name: r.name })));
+          if (rData.length > 0 && !selectedRoomId) {
+            setSelectedRoomId(rData[0].id);
+          }
         }
       }
       if (sRes.ok) {
         const sData = await sRes.json();
-        setSubjects(sData.map((s: SubjectOption) => ({ id: s.id, name: s.name, code: s.code, type: s.type, semester: s.semester })));
+        if (Array.isArray(sData)) {
+          setSubjects(sData.map((s: SubjectOption) => ({ id: s.id, name: s.name, code: s.code, type: s.type, semester: s.semester })));
+        }
       }
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
     }
   };
 
@@ -436,8 +446,8 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
         );
         setVersions(classVersions);
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
+      // Silently fail - non-critical
     }
   };
 
@@ -451,8 +461,8 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
           roomConflicts: data.roomConflicts || [],
         });
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
+      // Silently fail - non-critical
     }
   };
 
@@ -866,8 +876,7 @@ export function TimetableView({ institutionId, institutionName }: TimetableViewP
         toast.error("Erreur lors du chargement de la version");
         setViewingVersionId(null);
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast.error("Erreur lors du chargement de la version");
       setViewingVersionId(null);
     } finally {

@@ -192,13 +192,13 @@ export default function StudentPortalPage() {
           setHasInstitution(false);
         }
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
+      // Silently fail - hasInstitution stays null = loading state
     }
   };
 
   // Search institutions with debounce
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleSearch = useCallback(async (query?: string) => {
     setSearching(true);
@@ -209,8 +209,8 @@ export default function StudentPortalPage() {
         const data = await res.json();
         setSearchResults(data);
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
+      // Silently fail - search results will be empty
     } finally {
       setSearching(false);
     }
@@ -293,13 +293,15 @@ export default function StudentPortalPage() {
       const res = await fetch(`/api/classes?institutionId=${institutionId}`);
       if (res.ok) {
         const data = await res.json();
-        setClasses(data);
-        if (data.length > 0) {
-          setSelectedClassId(data[0].id);
+        if (Array.isArray(data)) {
+          setClasses(data);
+          if (data.length > 0) {
+            setSelectedClassId(data[0].id);
+          }
         }
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
+      // Silently fail - classes will be empty
     } finally {
       setLoading(false);
     }

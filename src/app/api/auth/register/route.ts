@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dataStore } from "@/lib/data-store";
+import { generateTimeSlots } from "@/lib/schedule-utils";
 import {
   generateSessionToken,
   getCookieOptions,
@@ -62,14 +63,33 @@ export async function POST(req: NextRequest) {
       });
       institutionId = inst.id;
 
-      // Generate default time slots
+      // Generate default time slots directly via dataStore
       try {
-        await fetch(new URL("/api/timeslots", req.url), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ institutionId: inst.id, generateFromConfig: true }),
-        });
-      } catch {}
+        const workingDays = JSON.parse(inst.workingDays) as string[];
+        const slots = generateTimeSlots(
+          workingDays,
+          inst.dayStartTime,
+          inst.dayEndTime,
+          inst.breakStartTime ?? null,
+          inst.breakEndTime ?? null,
+          inst.slotDuration
+        );
+        for (const slot of slots) {
+          await dataStore.timeSlot.create({
+            data: {
+              institutionId: inst.id,
+              dayOfWeek: slot.dayOfWeek,
+              startTime: slot.startTime,
+              endTime: slot.endTime,
+              label: slot.label || null,
+              isBreak: slot.isBreak || false,
+            },
+          });
+        }
+      } catch (slotError) {
+        console.error("Error generating default time slots:", slotError);
+        // Don't fail the whole request if time slot generation fails
+      }
     }
 
     // Create user

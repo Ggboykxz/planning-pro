@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dataStore } from "@/lib/data-store";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 
 // GET /api/holidays — List holidays with filters
 export async function GET(request: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(request as unknown as Request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const institutionId = searchParams.get("institutionId");
-    const year = searchParams.get("year");
     const type = searchParams.get("type");
 
     if (!institutionId) {
@@ -36,6 +41,11 @@ export async function GET(request: NextRequest) {
 // POST /api/holidays — Create a holiday
 export async function POST(request: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(request as unknown as Request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { institutionId, name, startDate, endDate, type } = body;
 
@@ -72,6 +82,11 @@ export async function POST(request: NextRequest) {
 // PUT /api/holidays — Update a holiday
 export async function PUT(request: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(request as unknown as Request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { id, name, startDate, endDate, type } = body;
 
@@ -106,6 +121,11 @@ export async function PUT(request: NextRequest) {
 // DELETE /api/holidays — Delete a holiday
 export async function DELETE(request: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(request as unknown as Request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 

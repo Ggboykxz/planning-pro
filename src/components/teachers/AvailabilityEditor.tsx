@@ -65,8 +65,8 @@ export function AvailabilityEditor({
         const data = await res.json();
         setTimeSlots(data.filter((s: TimeSlotData) => !s.isBreak));
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
+      // Silently fail - time slots will be empty
     } finally {
       setLoading(false);
     }

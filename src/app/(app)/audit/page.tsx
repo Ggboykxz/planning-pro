@@ -91,8 +91,8 @@ export default function AuditPage() {
         setLogs(data.logs || []);
         setTotal(data.total || 0);
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
+      // Silently fail - audit logs will be empty
     } finally {
       setLoading(false);
     }

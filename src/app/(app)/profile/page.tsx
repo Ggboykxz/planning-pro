@@ -71,8 +71,8 @@ export default function ProfilePage() {
             setCurrentUser(data.user);
           }
         }
-      } catch (error) {
-        console.error(error);
+      } catch {
+        // Silently fail - profile will show loading state
       } finally {
         setLoading(false);
       }

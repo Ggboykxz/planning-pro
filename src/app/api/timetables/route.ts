@@ -1,11 +1,11 @@
 import { dataStore, isDatabaseAvailable, checkPlanLimit } from "@/lib/data-store";
+import { getAuthenticatedUser } from "@/lib/auth-helpers";
 import { NextResponse } from "next/server";
 
 // Helper: Enrich a single slot with subject/teacher/room data (for fallback mode)
 async function enrichSlot(slot: Record<string, unknown>) {
   const dbAvailable = await isDatabaseAvailable();
   if (dbAvailable) {
-    // When DB is available, dataStore methods already include relations via Prisma
     return slot;
   }
 
@@ -31,7 +31,6 @@ async function enrichSlot(slot: Record<string, unknown>) {
 async function enrichSlots(slots: Record<string, unknown>[]) {
   const dbAvailable = await isDatabaseAvailable();
   if (dbAvailable) {
-    // When DB is available, dataStore methods already include relations via Prisma
     return slots;
   }
 
@@ -57,7 +56,7 @@ async function enrichSlots(slots: Record<string, unknown>[]) {
 
 // Helper: Sort slots by dayOfWeek then startTime
 function sortSlots(slots: Record<string, unknown>[]) {
-  return slots.sort((a, b) => {
+  return [...slots].sort((a, b) => {
     const dayA = (a.dayOfWeek as number) ?? 0;
     const dayB = (b.dayOfWeek as number) ?? 0;
     if (dayA !== dayB) return dayA - dayB;
@@ -85,8 +84,9 @@ async function detectSlotConflicts(
 
     const teacherConflicts = Array.isArray(teacherSlots) ? teacherSlots : [];
     if (teacherConflicts.length > 0) {
-      const classNames = teacherConflicts.map((s: Record<string, unknown>) => {
-        const tt = s.timetable as Record<string, unknown> | null;
+      const classNames = teacherConflicts.map((s: unknown) => {
+        const sRec = s as Record<string, unknown>;
+        const tt = sRec.timetable as Record<string, unknown> | null;
         const cls = tt?.class as Record<string, unknown> | null;
         return (cls?.name as string) || "inconnu";
       });
@@ -110,8 +110,9 @@ async function detectSlotConflicts(
 
     const roomConflicts = Array.isArray(roomSlots) ? roomSlots : [];
     if (roomConflicts.length > 0) {
-      const classNames = roomConflicts.map((s: Record<string, unknown>) => {
-        const tt = s.timetable as Record<string, unknown> | null;
+      const classNames = roomConflicts.map((s: unknown) => {
+        const sRec = s as Record<string, unknown>;
+        const tt = sRec.timetable as Record<string, unknown> | null;
         const cls = tt?.class as Record<string, unknown> | null;
         return (cls?.name as string) || "inconnu";
       });
@@ -269,6 +270,11 @@ async function buildRoomTimetable(roomId: string) {
 
 export async function GET(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const institutionId = searchParams.get("institutionId");
     const classId = searchParams.get("classId");
@@ -320,6 +326,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
 
     // Check plan limits for timetables
@@ -383,6 +394,11 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { id, slots, slotId, teacherId, roomId, ...data } = body;
 
@@ -489,6 +505,11 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     let slotId: string | null = null;
     let id: string | null = null;
 

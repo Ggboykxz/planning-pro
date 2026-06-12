@@ -1147,10 +1147,10 @@ export const dataStore = {
         results = results.filter((t) => t.institutionId === where.institutionId);
       }
       // Sort by dayOfWeek asc, startTime asc (mimicking the Prisma orderBy)
-      results.sort(
+      // Use spread to avoid mutating the store array
+      return [...results].sort(
         (a, b) => a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime)
       );
-      return results;
     },
 
     create: async ({
@@ -1286,8 +1286,8 @@ export const dataStore = {
         });
       }
 
-      // Default sort by createdAt desc
-      results.sort(
+      // Default sort by createdAt desc - use spread to avoid mutating store
+      results = [...results].sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
@@ -1539,7 +1539,8 @@ export const dataStore = {
       }
 
       // Sort by dayOfWeek asc, startTime asc by default
-      results.sort(
+      // Use spread to avoid mutating the store array
+      results = [...results].sort(
         (a, b) => a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime)
       );
 
@@ -2413,32 +2414,40 @@ export async function checkPlanLimit(
   resourceType: "teachers" | "rooms" | "timetables" | "institutions"
 ): Promise<{ allowed: boolean; current: number; limit: number; plan: string }> {
   // Find the institution's owner (first admin user linked to this institution)
-  const userInst = store.userInstitutions.find(
-    (ui) => ui.institutionId === institutionId && ui.role === "admin"
-  );
+  const userInsts = await dataStore.userInstitution.findMany({
+    where: { institutionId },
+  });
+  const adminLink = userInsts.find((ui: { institutionId: string; role: string }) => ui.role === "admin");
+
   let plan = "free";
-  if (userInst) {
-    const user = store.users.find((u) => u.id === userInst.userId);
+  if (adminLink) {
+    const user = await dataStore.user.findUnique({ where: { id: adminLink.userId } });
     if (user) {
-      plan = user.plan || "free";
+      plan = (user as Record<string, unknown>).plan as string || "free";
     }
   }
 
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
   const limit = limits[resourceType];
 
-  // Count current resources for the institution
+  // Count current resources for the institution using dataStore
   let current = 0;
   if (resourceType === "teachers") {
-    current = store.teachers.filter((t) => t.institutionId === institutionId).length;
+    const teachers = await dataStore.teacher.findMany({ where: { institutionId } });
+    current = teachers.length;
   } else if (resourceType === "rooms") {
-    current = store.rooms.filter((r) => r.institutionId === institutionId).length;
+    const rooms = await dataStore.room.findMany({ where: { institutionId } });
+    current = rooms.length;
   } else if (resourceType === "timetables") {
-    current = store.timetables.filter((t) => t.institutionId === institutionId).length;
+    const timetables = await dataStore.timetable.findMany({ where: { institutionId } });
+    current = Array.isArray(timetables) ? timetables.length : 0;
   } else if (resourceType === "institutions") {
     // Count institutions linked to the user
-    if (userInst) {
-      current = store.userInstitutions.filter((ui) => ui.userId === userInst.userId).length;
+    if (adminLink) {
+      const allUserInsts = await dataStore.userInstitution.findMany({
+        where: { userId: adminLink.userId },
+      });
+      current = allUserInsts.length;
     }
   }
 

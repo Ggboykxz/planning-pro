@@ -233,27 +233,32 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
       ]);
       if (dRes.ok) {
         const d = await dRes.json();
-        setData(d);
+        if (d && typeof d === "object") {
+          setData(d);
+        } else {
+          setError(true);
+        }
       } else {
         setError(true);
       }
       if (sRes.ok) {
         const subjects = await sRes.json();
-        setSubjectData(
-          subjects.map((s: { name: string; hoursPerWeek: number | null }) => ({
-            name: s.name,
-            hours: s.hoursPerWeek || 0,
-          }))
-        );
+        if (Array.isArray(subjects)) {
+          setSubjectData(
+            subjects.map((s: { name: string; hoursPerWeek: number | null }) => ({
+              name: s.name,
+              hours: s.hoursPerWeek || 0,
+            }))
+          );
+        }
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
-      console.error(err);
       setError(true);
     } finally {
       setLoading(false);
     }
-  }, [institutionId, currentUser?.id]);
+  }, [institutionId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -623,7 +628,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
         <AnimatedStatBlock
           label="Salles"
           value={data.roomCount}
-          sublabel={data.roomCount > 0 ? `${data.roomUtilization.filter((r) => r.usedSlots > 0).length} utilisées` : undefined}
+          sublabel={data.roomCount > 0 && data.roomUtilization ? `${data.roomUtilization.filter((r) => r.usedSlots > 0).length} utilisées` : undefined}
           onClick={() => setCurrentSection("rooms")}
         />
         <AnimatedStatBlock
@@ -855,7 +860,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
       )}
 
       {/* ═══ TEACHER WORKLOAD ═══ */}
-      {data.teacherWorkload.length > 0 && (
+      {data.teacherWorkload && data.teacherWorkload.length > 0 && (
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
           <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Charge des enseignants</p>
           <div className="space-y-3 max-h-64 overflow-y-auto scrollbar-thin">
@@ -880,7 +885,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
       )}
 
       {/* ═══ RECENT TIMETABLES ═══ */}
-      {data.recentTimetables.length > 0 && (
+      {data.recentTimetables && data.recentTimetables.length > 0 && (
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
           <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Emplois du temps récents</p>
           <div className="space-y-0">
@@ -992,7 +997,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
       )}
 
       {/* ═══ TEACHER WORKLOAD DISTRIBUTION CHART ═══ */}
-      {data.teacherWorkload.length > 0 && (
+      {data.teacherWorkload && data.teacherWorkload.length > 0 && (
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
           <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Répartition de la charge enseignante</p>
           <ResponsiveContainer width="100%" height={Math.max(200, data.teacherWorkload.length * 32)}>
@@ -1031,7 +1036,7 @@ export function DashboardView({ institutionId }: DashboardViewProps) {
       )}
 
       {/* ═══ ROOM UTILIZATION HEATMAP ═══ */}
-      {data.roomUtilization.length > 0 && (
+      {data.roomUtilization && data.roomUtilization.length > 0 && (
         <div className="border border-[#E5E5E5] dark:border-[#2A2A2A] p-6">
           <p className="text-xs font-bold text-[#201D1D] dark:text-[#FDFCFC] mb-4">Utilisation des salles</p>
           <div className="overflow-x-auto">

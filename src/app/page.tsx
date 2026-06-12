@@ -583,7 +583,7 @@ function LandingPage() {
 // ─── Main Root Page ──────────────────────────────────────────
 export default function HomePage() {
   const { institutionId, setInstitutionId } = useAppStore();
-  const { currentUser, isAuthenticated, isLoading: authLoading, restoreSession } = useAuth();
+  const { user: currentUser, isAuthenticated, isLoading: authLoading, restoreSession } = useAuth();
   const [institution, setInstitution] = useState<InstitutionData | null>(null);
   const [checkingInstitution, setCheckingInstitution] = useState(false);
   const [onboardingLoading, setOnboardingLoading] = useState(false);
@@ -632,7 +632,7 @@ export default function HomePage() {
       const res = await fetch("/api/institution");
       if (res.ok) {
         const data = await res.json();
-        if (data.length > 0) {
+        if (Array.isArray(data) && data.length > 0) {
           const inst = data[0];
           setInstitution(inst);
           setInstitutionId(inst.id);
@@ -645,9 +645,12 @@ export default function HomePage() {
             }
           }
         }
+      } else if (res.status === 401) {
+        // Not authenticated - will be handled by auth redirect
+        setCheckingInstitution(false);
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
+      // Silently fail - institution check will resolve
     } finally {
       setCheckingInstitution(false);
     }
@@ -682,7 +685,6 @@ export default function HomePage() {
         setErrorMessage(errorData.error || errorData.details || `Erreur lors de la création (${res.status})`);
       }
     } catch (error) {
-      console.error(error);
       setErrorMessage(error instanceof Error ? error.message : "Erreur de connexion au serveur");
     } finally {
       setOnboardingLoading(false);
